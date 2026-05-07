@@ -47,6 +47,16 @@ else
   fi
 fi
 echo -e "Tester: ${YELLOW}$TESTER_NAME${NC}"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OPTIONAL TC FILTER (second arg, comma-separated)
+# Examples: ./run_tests.sh "Imran" TC03
+#           ./run_tests.sh "Imran" TC01,TC03
+# ─────────────────────────────────────────────────────────────────────────────
+TC_FILTER="${2:-}"
+if [ -n "$TC_FILTER" ]; then
+  echo -e "Filter:  ${YELLOW}$TC_FILTER${NC}"
+fi
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -82,6 +92,22 @@ DEVICE_SERIAL=$(adb -s $DEVICE_ID shell getprop ro.serialno | tr -d '\r')
 echo -e "  Brand:           ${CYAN}$DEVICE_BRAND${NC}"
 echo -e "  Model:           ${CYAN}$DEVICE_MODEL${NC}"
 echo -e "  Android Version: ${CYAN}$ANDROID_VERSION (SDK $SDK_VERSION)${NC}"
+echo ""
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CLEAN UP STALE MAESTRO PROCESSES & FORWARDS
+# Zombie CI jobs (e.g. self-hosted Actions targeting a missing emulator) and
+# orphaned IDE MCP servers can pile up and squat on port 7001 / poison ADB.
+# ─────────────────────────────────────────────────────────────────────────────
+STALE_PIDS=$(pgrep -f 'maestro.cli.AppKt' 2>/dev/null || true)
+if [ -n "$STALE_PIDS" ]; then
+  STALE_COUNT=$(echo "$STALE_PIDS" | wc -l | tr -d ' ')
+  echo -e "${YELLOW}Cleaning up $STALE_COUNT stale Maestro JVM(s)...${NC}"
+  pkill -9 -f 'maestro.cli.AppKt' 2>/dev/null || true
+  sleep 1
+  echo -e "  ${GREEN}✓ Stale processes terminated${NC}"
+fi
+adb -s "$DEVICE_ID" forward --remove-all 2>/dev/null || true
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -215,6 +241,33 @@ declare -a TEST_CASES=(
   "TC04|TC04_audio_response_feature|Audio Response Feature|Ensures users can listen to AI responses using the text-to-speech feature|P0"
   "TC05|TC05_user_authentication_logout|User Authentication & Logout|Verifies complete user flow including sign-up, login, and logout functionality|P0"
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# APPLY TC FILTER (if provided)
+# ─────────────────────────────────────────────────────────────────────────────
+if [ -n "$TC_FILTER" ]; then
+  IFS=',' read -ra REQUESTED_TCS <<< "$TC_FILTER"
+  declare -a FILTERED=()
+  for test_case in "${TEST_CASES[@]}"; do
+    IFS='|' read -r TC_ID _REST <<< "$test_case"
+    for req in "${REQUESTED_TCS[@]}"; do
+      # Trim whitespace
+      req="${req#"${req%%[![:space:]]*}"}"
+      req="${req%"${req##*[![:space:]]}"}"
+      if [ "$TC_ID" = "$req" ]; then
+        FILTERED+=("$test_case")
+        break
+      fi
+    done
+  done
+  if [ ${#FILTERED[@]} -eq 0 ]; then
+    echo -e "${RED}ERROR: No matching test cases for filter '$TC_FILTER'${NC}"
+    echo "Available: TC01, TC02, TC03, TC04, TC05"
+    exit 1
+  fi
+  TEST_CASES=("${FILTERED[@]}")
+fi
+TOTAL_COUNT=${#TEST_CASES[@]}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RUN TESTS
@@ -374,7 +427,7 @@ for test_case in "${TEST_CASES[@]}"; do
   
   while [ $ATTEMPT -le $((MAX_RETRIES + 1)) ] && [ "$TEST_PASSED" = "false" ]; do
     echo -ne "\r"
-    printf "${YELLOW}[%d/5]${NC} %-35s " "$TOTAL" "$TC_NAME"
+    printf "${YELLOW}[%d/%d]${NC} %-35s " "$TOTAL" "$TOTAL_COUNT" "$TC_NAME"
     if [ $ATTEMPT -eq 1 ]; then
       echo -ne "${BLUE}RUNNING...${NC}"
     else
@@ -396,7 +449,7 @@ for test_case in "${TEST_CASES[@]}"; do
       
       if [ $ATTEMPT -le $MAX_RETRIES ]; then
         echo -ne "\r"
-        printf "${YELLOW}[%d/5]${NC} %-35s " "$TOTAL" "$TC_NAME"
+        printf "${YELLOW}[%d/%d]${NC} %-35s " "$TOTAL" "$TOTAL_COUNT" "$TC_NAME"
         echo -e "${YELLOW}⟳ ATTEMPT $ATTEMPT FAILED${NC} (${TEST_DURATION}s) - retrying..."
         show_failure_details "$TEST_OUTPUT" "$TEST_LOG_FILE"
         reset_maestro_for_retry
@@ -407,7 +460,7 @@ for test_case in "${TEST_CASES[@]}"; do
   done
   
   echo -ne "\r"
-  printf "${YELLOW}[%d/5]${NC} %-35s " "$TOTAL" "$TC_NAME"
+  printf "${YELLOW}[%d/%d]${NC} %-35s " "$TOTAL" "$TOTAL_COUNT" "$TC_NAME"
   
   if [ "$TEST_PASSED" = "true" ]; then
     STATUS="PASSED"

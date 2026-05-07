@@ -64,19 +64,23 @@ tags:
 - tapOn:
     text: "Learn More"
     index: 0
-
 - extendedWaitUntil:
     visible:
       id: "chat_read_full_advice_button"
     timeout: 30000
+- scrollUntilVisible:
+    centerElement: true
+    element:
+      id: "chat_read_full_advice_button"
+    direction: DOWN
 - tapOn:
     id: "chat_read_full_advice_button"
-
 - extendedWaitUntil:
     visible:
       id: "chat_thread_list"
     timeout: 30000
 - scrollUntilVisible:
+    centerElement: true
     element:
       text: "Related questions"
     direction: DOWN
