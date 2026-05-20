@@ -38,7 +38,7 @@ tags:
 
 # Tap Ask button (exact match to avoid "Ask about your farm...")
 - tapOn:
-    text: "Ask"
+    text: "^Ask$"
 
 # Wait for new response after tapping related question
 - extendedWaitUntil:

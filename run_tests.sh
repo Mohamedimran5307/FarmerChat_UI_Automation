@@ -89,6 +89,14 @@ BUILD_ID=$(adb -s $DEVICE_ID shell getprop ro.build.id | tr -d '\r')
 SECURITY_PATCH=$(adb -s $DEVICE_ID shell getprop ro.build.version.security_patch | tr -d '\r')
 DEVICE_SERIAL=$(adb -s $DEVICE_ID shell getprop ro.serialno | tr -d '\r')
 
+# OEM popup loop only fires on OPPO/realme (com.oplus.stdsp). Gate it once so
+# non-OPPO devices skip ~20 useless uiautomator dumps per test.
+OEM_LOWER=$(echo "$DEVICE_MANUFACTURER $DEVICE_BRAND" | tr '[:upper:]' '[:lower:]')
+case "$OEM_LOWER" in
+  *oppo*|*realme*) POPUP_LOOP_ENABLED=1 ;;
+  *) POPUP_LOOP_ENABLED=0 ;;
+esac
+
 echo -e "  Brand:           ${CYAN}$DEVICE_BRAND${NC}"
 echo -e "  Model:           ${CYAN}$DEVICE_MODEL${NC}"
 echo -e "  Android Version: ${CYAN}$ANDROID_VERSION (SDK $SDK_VERSION)${NC}"
@@ -212,6 +220,11 @@ dismiss_system_popup() {
 # SETUP TEST FUNCTION
 # ─────────────────────────────────────────────────────────────────────────────
 setup_test() {
+  # Keep the screen on and unlocked — long AI-response waits (30–90s) would
+  # otherwise hit the OEM screen-lock and surface as "Element not found".
+  adb -s $DEVICE_ID shell svc power stayon true 2>/dev/null || true
+  adb -s $DEVICE_ID shell input keyevent KEYCODE_WAKEUP 2>/dev/null || true
+
   adb -s $DEVICE_ID shell am force-stop $APP_ID 2>/dev/null
   adb -s $DEVICE_ID shell "run-as $APP_ID sh -c 'rm -rf shared_prefs/* files/* cache/* databases/*'" 2>/dev/null || true
   adb -s $DEVICE_ID forward tcp:7001 tcp:7001 2>/dev/null
@@ -227,7 +240,7 @@ setup_test() {
   done
   adb -s $DEVICE_ID shell am start --activity-clear-task -n $APP_ID/org.digitalgreen.farmer.chatbot.MainActivity 2>/dev/null
   sleep 3
-  dismiss_system_popup
+  [ "$POPUP_LOOP_ENABLED" = "1" ] && dismiss_system_popup
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -313,17 +326,22 @@ run_test_attempt() {
   TEST_LOG_FILE="$RUN_LOGS_DIR/${TC_FILE}_attempt${ATTEMPT_NUM}.log"
   
   setup_test >/dev/null 2>&1
-  
-  (
-    for i in $(seq 1 20); do
-      sleep 3
-      dismiss_system_popup 2>/dev/null
-    done
-  ) &
-  local POPUP_PID=$!
-  
+
+  local POPUP_PID=""
+  if [ "$POPUP_LOOP_ENABLED" = "1" ]; then
+    (
+      for i in $(seq 1 20); do
+        sleep 3
+        dismiss_system_popup 2>/dev/null
+      done
+    ) &
+    POPUP_PID=$!
+  fi
+
+  local DEBUG_DIR="$RUN_LOGS_DIR/${TC_FILE}_attempt${ATTEMPT_NUM}_debug"
   local TEST_START=$(date +%s)
   TEST_OUTPUT=$(maestro --device $DEVICE_ID test \
+    --debug-output "$DEBUG_DIR" \
     --env APP_ID=$APP_ID \
     --env LANGUAGE="English (Kenya)" \
     --env LANGUAGE_CODE=en \
@@ -333,13 +351,15 @@ run_test_attempt() {
     --env PHONE_NUMBER=7013733824 \
     --env OTP_CODE=1111 \
     "$SCRIPT_DIR/flows/home/${TC_FILE}.yaml" 2>&1)
-  
+
   TEST_EXIT_CODE=$?
   local TEST_END=$(date +%s)
   TEST_DURATION=$((TEST_END - TEST_START))
-  
-  kill $POPUP_PID 2>/dev/null || true
-  wait $POPUP_PID 2>/dev/null || true
+
+  if [ -n "$POPUP_PID" ]; then
+    kill $POPUP_PID 2>/dev/null || true
+    wait $POPUP_PID 2>/dev/null || true
+  fi
   
   {
     echo "═══════════════════════════════════════════════════════════════"
