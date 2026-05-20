@@ -154,16 +154,46 @@ ensure_maestro_installed() {
   local MAESTRO_APP=$(adb -s $DEVICE_ID shell pm list packages 2>/dev/null | grep "dev.mobile.maestro$" || true)
   local MAESTRO_TEST=$(adb -s $DEVICE_ID shell pm list packages 2>/dev/null | grep "dev.mobile.maestro.test" || true)
 
+  local REASON=""
   if [ -z "$MAESTRO_APP" ] || [ -z "$MAESTRO_TEST" ]; then
-    echo -e "  ${YELLOW}Installing Maestro driver APKs...${NC}"
+    REASON="missing"
+  else
+    # Version-mismatch check. Maestro driver APKs share a fixed versionCode
+    # across releases, so we can't compare versions directly. Instead compare
+    # the bundled jar's mtime to the on-device lastUpdateTime — if the jar is
+    # newer (i.e. Maestro CLI was upgraded after the driver was installed),
+    # the client/driver proto generations will diverge and gRPC will close
+    # the channel with "UNAVAILABLE" / "tcp:7001 closed". Reinstall to match.
+    local JAR_PATH="$HOME/.maestro/lib/maestro-client.jar"
+    if [ -f "$JAR_PATH" ]; then
+      local JAR_MTIME=$(stat -f %m "$JAR_PATH" 2>/dev/null || stat -c %Y "$JAR_PATH" 2>/dev/null)
+      local INSTALL_TIME_STR=$(adb -s $DEVICE_ID shell 'dumpsys package dev.mobile.maestro 2>/dev/null' | grep 'lastUpdateTime' | head -1 | sed 's/.*lastUpdateTime=//' | tr -d '\r')
+      if [ -n "$JAR_MTIME" ] && [ -n "$INSTALL_TIME_STR" ]; then
+        local INSTALL_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S" "$INSTALL_TIME_STR" "+%s" 2>/dev/null || date -d "$INSTALL_TIME_STR" "+%s" 2>/dev/null)
+        if [ -n "$INSTALL_EPOCH" ] && [ "$JAR_MTIME" -gt "$INSTALL_EPOCH" ]; then
+          REASON="stale"
+        fi
+      fi
+    fi
+  fi
+
+  if [ -n "$REASON" ]; then
+    if [ "$REASON" = "stale" ]; then
+      echo -e "  ${YELLOW}Driver APKs are older than Maestro CLI — refreshing...${NC}"
+      adb -s $DEVICE_ID shell am force-stop dev.mobile.maestro 2>/dev/null || true
+      adb -s $DEVICE_ID shell am force-stop dev.mobile.maestro.test 2>/dev/null || true
+    else
+      echo -e "  ${YELLOW}Installing Maestro driver APKs...${NC}"
+    fi
     cd /tmp
     unzip -o ~/.maestro/lib/maestro-client.jar maestro-app.apk maestro-server.apk 2>/dev/null || true
-    if [ -z "$MAESTRO_APP" ]; then
+    # On "stale" we always reinstall both; on "missing" only the absent one.
+    if [ -z "$MAESTRO_APP" ] || [ "$REASON" = "stale" ]; then
       adb -s $DEVICE_ID install -r -g /tmp/maestro-app.apk &>/dev/null &
       sleep 5
       wait 2>/dev/null || true
     fi
-    if [ -z "$MAESTRO_TEST" ]; then
+    if [ -z "$MAESTRO_TEST" ] || [ "$REASON" = "stale" ]; then
       adb -s $DEVICE_ID install -r -g /tmp/maestro-server.apk &>/dev/null &
       sleep 5
       wait 2>/dev/null || true
@@ -171,7 +201,7 @@ ensure_maestro_installed() {
     cd - >/dev/null
     echo -e "  ${GREEN}✓ Maestro APKs installed${NC}"
   else
-    echo -e "  ${GREEN}✓ Maestro APKs already installed${NC}"
+    echo -e "  ${GREEN}✓ Maestro APKs already installed and up to date${NC}"
   fi
 }
 
@@ -452,6 +482,11 @@ reset_maestro_for_retry() {
   adb start-server 2>/dev/null || true
   sleep 3
   adb -s $DEVICE_ID forward tcp:7001 tcp:7001 >/dev/null 2>&1
+  # Self-heal mid-run regressions: driver APKs auto-uninstalled by
+  # MIUI/ColorOS cleanup, or drifted out of sync after a host-side
+  # Maestro CLI upgrade. The function is cheap when nothing's wrong
+  # (a pm-list + jar-mtime check), so safe to call on every retry.
+  ensure_maestro_installed
   # Poll for driver readiness instead of a blind sleep — exits early on
   # clean recovery, waits up to 10s on slow recovery.
   wait_for_driver_port || true
