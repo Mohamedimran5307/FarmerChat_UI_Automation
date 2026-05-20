@@ -14,7 +14,28 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPORTS_DIR="$SCRIPT_DIR/reports"
 DATE_STAMP=$(date +%d%b%Y)
 TIME_STAMP=$(date +%H%M%S)
-APP_ID="org.digitalgreen.farmer.chat"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LOAD TEST CONFIG (single source of truth)
+# Parses config/env.yaml — both the --env flags passed to Maestro and any
+# shell variables the runner itself needs (APP_ID, etc.) come from here.
+# ─────────────────────────────────────────────────────────────────────────────
+ENV_FILE="$SCRIPT_DIR/config/env.yaml"
+declare -a ENV_FLAGS=()
+if [ ! -f "$ENV_FILE" ]; then
+  echo "ERROR: $ENV_FILE not found"
+  exit 1
+fi
+while IFS= read -r line || [ -n "$line" ]; do
+  if [[ "$line" =~ ^([A-Z_][A-Z0-9_]*):[[:space:]]*(.*)$ ]]; then
+    key="${BASH_REMATCH[1]}"
+    value="${BASH_REMATCH[2]}"
+    # strip trailing whitespace
+    value="${value%"${value##*[![:space:]]}"}"
+    export "$key=$value"
+    ENV_FLAGS+=(--env "${key}=${value}")
+  fi
+done < "$ENV_FILE"
 
 # Colors
 RED='\033[0;31m'
@@ -219,6 +240,21 @@ dismiss_system_popup() {
 # ─────────────────────────────────────────────────────────────────────────────
 # SETUP TEST FUNCTION
 # ─────────────────────────────────────────────────────────────────────────────
+# Wait until the Maestro driver port is listening on the device.
+# 7001 in hex = 1B59; appears in /proc/net/tcp when the driver service is up.
+# Returns 0 on success, 1 on timeout (10s max).
+wait_for_driver_port() {
+  local PORT_RETRIES=0
+  while [ $PORT_RETRIES -lt 5 ]; do
+    if adb -s $DEVICE_ID shell "cat /proc/net/tcp" 2>/dev/null | grep -qi "1B59"; then
+      return 0
+    fi
+    PORT_RETRIES=$((PORT_RETRIES + 1))
+    sleep 2
+  done
+  return 1
+}
+
 setup_test() {
   # Keep the screen on and unlocked — long AI-response waits (30–90s) would
   # otherwise hit the OEM screen-lock and surface as "Element not found".
@@ -229,15 +265,7 @@ setup_test() {
   adb -s $DEVICE_ID shell "run-as $APP_ID sh -c 'rm -rf shared_prefs/* files/* cache/* databases/*'" 2>/dev/null || true
   adb -s $DEVICE_ID forward tcp:7001 tcp:7001 2>/dev/null
   sleep 2
-  # Verify port 7001 is listening (1B59 = 7001 in hex)
-  local PORT_RETRIES=0
-  while [ $PORT_RETRIES -lt 5 ]; do
-    if adb -s $DEVICE_ID shell "cat /proc/net/tcp" 2>/dev/null | grep -qi "1B59"; then
-      break
-    fi
-    PORT_RETRIES=$((PORT_RETRIES + 1))
-    sleep 2
-  done
+  wait_for_driver_port
   adb -s $DEVICE_ID shell am start --activity-clear-task -n $APP_ID/org.digitalgreen.farmer.chatbot.MainActivity 2>/dev/null
   sleep 3
   [ "$POPUP_LOOP_ENABLED" = "1" ] && dismiss_system_popup
@@ -342,14 +370,7 @@ run_test_attempt() {
   local TEST_START=$(date +%s)
   TEST_OUTPUT=$(maestro --device $DEVICE_ID test \
     --debug-output "$DEBUG_DIR" \
-    --env APP_ID=$APP_ID \
-    --env LANGUAGE="English (Kenya)" \
-    --env LANGUAGE_CODE=en \
-    --env USER_NAME="Test Farmer" \
-    --env SHORT_NAME=TF \
-    --env WAIT_TIMEOUT=10000 \
-    --env PHONE_NUMBER=7013733824 \
-    --env OTP_CODE=1111 \
+    "${ENV_FLAGS[@]}" \
     "$SCRIPT_DIR/flows/home/${TC_FILE}.yaml" 2>&1)
 
   TEST_EXIT_CODE=$?
@@ -431,7 +452,9 @@ reset_maestro_for_retry() {
   adb start-server 2>/dev/null || true
   sleep 3
   adb -s $DEVICE_ID forward tcp:7001 tcp:7001 >/dev/null 2>&1
-  sleep 5
+  # Poll for driver readiness instead of a blind sleep — exits early on
+  # clean recovery, waits up to 10s on slow recovery.
+  wait_for_driver_port || true
 }
 
 for test_case in "${TEST_CASES[@]}"; do
@@ -493,7 +516,9 @@ for test_case in "${TEST_CASES[@]}"; do
     FAILED=$((FAILED + 1))
     TEST_STATUS_ARRAY+=("FAILED")
     echo -e "${RED}✗ FAILED${NC} (${FINAL_DURATION}s) ${YELLOW}(after $MAX_RETRIES retries)${NC}"
-    ERROR_MESSAGE=$(echo "$FINAL_OUTPUT" | grep -A 2 "FAILED" | head -3 | tr '\n' ' ' | tr '"' "'" | sed 's/[[:cntrl:]]//g')
+    # Escape backslashes first (\ → \\) so paths like C:\... or regex \d
+    # in the failure output don't produce invalid JSON.
+    ERROR_MESSAGE=$(echo "$FINAL_OUTPUT" | grep -A 2 "FAILED" | head -3 | tr '\n' ' ' | sed 's/\\/\\\\/g' | tr '"' "'" | sed 's/[[:cntrl:]]//g')
     show_failure_details "$FINAL_OUTPUT" "$FINAL_LOG_FILE"
   fi
   
