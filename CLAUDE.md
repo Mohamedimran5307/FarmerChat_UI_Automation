@@ -9,8 +9,10 @@ A Maestro-based UI test suite for the FarmerChat Android app (`org.digitalgreen.
 ## Common commands
 
 ```bash
-./setup_device.sh              # One-time: extract Maestro APKs from ~/.maestro/lib and install on device
-./run_tests.sh "Tester Name"   # Run the full TC01–TC05 suite; prompts for name if omitted
+./setup_device.sh                       # One-time: extract Maestro APKs from ~/.maestro/lib and install on device
+./run_tests.sh "Tester Name"            # Run the full TC01–TC05 suite; prompts for name if omitted
+./run_tests.sh "Tester Name" TC03       # Run a single test through the runner (keeps setup/retries/reporting)
+./run_tests.sh "Tester Name" TC01,TC03  # Run a comma-separated subset
 
 # Run a single flow directly (bypasses the runner's setup, retries, popup loop, and reporting):
 maestro --device <DEVICE_ID> test \
@@ -18,6 +20,8 @@ maestro --device <DEVICE_ID> test \
   --env PHONE_NUMBER=7013733824 --env OTP_CODE=1111 --env WAIT_TIMEOUT=10000 \
   flows/home/TC02_ai_chat_experience.yaml
 ```
+
+The second positional arg to `run_tests.sh` is a TC filter (parsed at `run_tests.sh:56`); use it instead of the raw `maestro test` form whenever you want the clean-state setup and retry recovery.
 
 `run_tests.sh` requires a USB-connected device with debugging enabled, ADB on PATH, and Maestro CLI installed. It exits with the failure count.
 
