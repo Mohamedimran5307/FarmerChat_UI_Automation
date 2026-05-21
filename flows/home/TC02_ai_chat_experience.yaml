@@ -1,5 +1,7 @@
 appId: any
 name: "TC02 - AI Chat Experience"
+# priority: P0
+# description: Validates that users can ask farming-related questions and receive AI-generated responses along with suggested follow-up questions
 tags:
   - home
   - chat
@@ -7,9 +9,11 @@ tags:
 ---
 - runFlow: ../../helpers/complete_onboarding.yaml
 
-# Open the type input bar
+# Open the type input bar. waitForAnimationToEnd guards against the
+# chat_text_input being declared visible while still animating in.
 - tapOn:
     id: "primary_input_type_btn"
+- waitForAnimationToEnd
 - extendedWaitUntil:
     visible:
       id: "chat_text_input"
@@ -26,8 +30,7 @@ tags:
 
 # scrollUntilVisible waits up to 90s for chat_suggested_questions, which
 # only appears once the answer is fully streamed — that's the implicit
-# "wait for AI response". An extra extendedWaitUntil on chat_screen is a
-# no-op because the wrapper is visible the instant we land here.
+# "wait for AI response".
 - scrollUntilVisible:
     centerElement: true
     element:
@@ -38,11 +41,12 @@ tags:
 - assertVisible:
     id: "chat_suggested_questions"
 
-# Tap an "Ask" follow-up suggestion. ^Ask$ is anchored because Maestro's
-# text: matcher is regex and would otherwise also match the composer hint
-# "Ask about your farm…".
+# Tap the first suggested question by its stable per-row id. The previous
+# `text: "^Ask$"` selector relied on Maestro's regex substring behavior
+# matching the "Ask" icon's a11y label — fragile if frontend ever changes
+# the icon label.
 - tapOn:
-    text: "^Ask$"
+    id: "chat_suggested_question_0"
 - waitForAnimationToEnd
 
 # Same pattern for the follow-up answer.

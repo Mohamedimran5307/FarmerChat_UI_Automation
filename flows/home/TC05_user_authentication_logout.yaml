@@ -1,5 +1,7 @@
 appId: any
 name: "TC05 - User Authentication & Logout"
+# priority: P0
+# description: Verifies complete user flow including sign-up, login, and logout functionality
 tags:
   - settings
   - auth
@@ -10,6 +12,7 @@ tags:
 # ── Sign up with phone number ──
 - tapOn:
     id: "home_hamburger_button"
+- waitForAnimationToEnd
 - extendedWaitUntil:
     visible:
       id: "drawer_signup_btn"
@@ -70,6 +73,7 @@ tags:
 # ── Open drawer → Settings ──
 - tapOn:
     id: "home_hamburger_button"
+- waitForAnimationToEnd
 - extendedWaitUntil:
     visible:
       id: "drawer_settings_btn"

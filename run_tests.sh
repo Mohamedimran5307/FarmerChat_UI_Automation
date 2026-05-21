@@ -16,26 +16,64 @@ DATE_STAMP=$(date +%d%b%Y)
 TIME_STAMP=$(date +%H%M%S)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# LOAD TEST CONFIG (single source of truth)
-# Parses config/env.yaml — both the --env flags passed to Maestro and any
-# shell variables the runner itself needs (APP_ID, etc.) come from here.
+# LOAD TEST CONFIG
+# Reads config/env.yaml (committed defaults) then config/env.local.yaml
+# (gitignored, holds secrets like PHONE_NUMBER / OTP_CODE). Keys defined
+# in env.local.yaml override env.yaml. Parallel indexed arrays are used
+# instead of `declare -A` so this works under macOS's default bash 3.2.
 # ─────────────────────────────────────────────────────────────────────────────
 ENV_FILE="$SCRIPT_DIR/config/env.yaml"
+ENV_LOCAL_FILE="$SCRIPT_DIR/config/env.local.yaml"
+declare -a ENV_KEYS=()
+declare -a ENV_VALUES=()
 declare -a ENV_FLAGS=()
+
 if [ ! -f "$ENV_FILE" ]; then
   echo "ERROR: $ENV_FILE not found"
   exit 1
 fi
-while IFS= read -r line || [ -n "$line" ]; do
-  if [[ "$line" =~ ^([A-Z_][A-Z0-9_]*):[[:space:]]*(.*)$ ]]; then
-    key="${BASH_REMATCH[1]}"
-    value="${BASH_REMATCH[2]}"
-    # strip trailing whitespace
-    value="${value%"${value##*[![:space:]]}"}"
-    export "$key=$value"
-    ENV_FLAGS+=(--env "${key}=${value}")
-  fi
-done < "$ENV_FILE"
+
+env_set() {
+  # Upsert a key→value pair into ENV_KEYS / ENV_VALUES. Later writes win.
+  local key="$1" value="$2"
+  local i
+  for i in "${!ENV_KEYS[@]}"; do
+    if [ "${ENV_KEYS[$i]}" = "$key" ]; then
+      ENV_VALUES[$i]="$value"
+      return
+    fi
+  done
+  ENV_KEYS+=("$key")
+  ENV_VALUES+=("$value")
+}
+
+load_env_file() {
+  local file="$1"
+  [ -f "$file" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [[ "$line" =~ ^([A-Z_][A-Z0-9_]*):[[:space:]]*(.*)$ ]]; then
+      local key="${BASH_REMATCH[1]}"
+      local value="${BASH_REMATCH[2]}"
+      value="${value%"${value##*[![:space:]]}"}"
+      export "$key=$value"
+      env_set "$key" "$value"
+    fi
+  done < "$file"
+}
+
+load_env_file "$ENV_FILE"
+load_env_file "$ENV_LOCAL_FILE"   # overrides for any keys defined here
+
+for i in "${!ENV_KEYS[@]}"; do
+  ENV_FLAGS+=(--env "${ENV_KEYS[$i]}=${ENV_VALUES[$i]}")
+done
+
+# Warn (but don't fail) if secrets are missing — surfaces immediately
+# instead of waiting for a flow to fail with unresolved ${PHONE_NUMBER}.
+if [ ! -f "$ENV_LOCAL_FILE" ]; then
+  echo "WARNING: $ENV_LOCAL_FILE not found — secrets (PHONE_NUMBER, OTP_CODE) will be unresolved."
+  echo "  Copy config/env.local.example.yaml to config/env.local.yaml and fill in values."
+fi
 
 # Colors
 RED='\033[0;31m'
@@ -302,16 +340,61 @@ setup_test() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# KEY TEST SCENARIOS (Execution Order 1-5) with Priority
-# Format: TC_ID|FILE|NAME|DESCRIPTION|PRIORITY
+# DISCOVER TEST CASES from flows/home/TC*_*.yaml
+# Each TC entry is built from the YAML front-matter:
+#   `name:`          → display name (required; fallback = filename)
+#   `# priority:`    → P0/P1/P2 comment in front-matter (default P1)
+#   `# description:` → comment in front-matter (default = name minus prefix)
+# Sorted by filename so TC01 runs before TC02 etc. Adding a new TC means
+# dropping a TC<NN>_<slug>.yaml into flows/home/ — no edit here needed.
+# Format kept identical to the old hardcoded array: TC_ID|FILE|NAME|DESC|PRIO
 # ─────────────────────────────────────────────────────────────────────────────
-declare -a TEST_CASES=(
-  "TC01|TC01_location_based_personalization|Location-Based Personalization|Ensures the app captures user GPS via the weather widget and displays relevant image questions and content cards based on location|P0"
-  "TC02|TC02_ai_chat_experience|AI Chat Experience|Validates that users can ask farming-related questions and receive AI-generated responses along with suggested follow-up questions|P0"
-  "TC03|TC03_home_feed_usability|Home Feed Usability|Confirms that users can smoothly scroll through the home feed and access all content cards without issues|P1"
-  "TC04|TC04_audio_response_feature|Audio Response Feature|Ensures users can listen to AI responses using the text-to-speech feature|P0"
-  "TC05|TC05_user_authentication_logout|User Authentication & Logout|Verifies complete user flow including sign-up, login, and logout functionality|P0"
-)
+declare -a TEST_CASES=()
+for tc_path in "$SCRIPT_DIR"/flows/home/TC*_*.yaml; do
+  [ -f "$tc_path" ] || continue
+  tc_file=$(basename "$tc_path" .yaml)
+  # TC_ID = leading "TC" + digits, e.g. TC01, TC10
+  if [[ "$tc_file" =~ ^(TC[0-9]+) ]]; then
+    tc_id="${BASH_REMATCH[1]}"
+  else
+    continue
+  fi
+
+  tc_name=""
+  tc_priority=""
+  tc_desc=""
+
+  # Read front-matter only (stop at `---`).
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ "$line" = "---" ] && break
+    if [[ -z "$tc_name" && "$line" =~ ^name:[[:space:]]*\"?([^\"]*)\"?[[:space:]]*$ ]]; then
+      tc_name="${BASH_REMATCH[1]}"
+    elif [[ -z "$tc_priority" && "$line" =~ ^\#[[:space:]]*priority:[[:space:]]*([A-Z0-9]+)[[:space:]]*$ ]]; then
+      tc_priority="${BASH_REMATCH[1]}"
+    elif [[ -z "$tc_desc" && "$line" =~ ^\#[[:space:]]*description:[[:space:]]*(.*)$ ]]; then
+      tc_desc="${BASH_REMATCH[1]}"
+    fi
+  done < "$tc_path"
+
+  [ -z "$tc_name" ]     && tc_name="$tc_file"
+  [ -z "$tc_priority" ] && tc_priority="P1"
+  # If no `# description:` comment, fall back to the name stripped of its
+  # "TC## - " prefix so reports still get something readable.
+  if [ -z "$tc_desc" ]; then
+    tc_desc=$(echo "$tc_name" | sed -E 's/^TC[0-9]+[[:space:]]*-[[:space:]]*//')
+  fi
+  # Strip "TC## - " from the displayed name too so the runner's progress
+  # column stays narrow (matches the old hand-curated names).
+  display_name=$(echo "$tc_name" | sed -E 's/^TC[0-9]+[[:space:]]*-[[:space:]]*//')
+
+  TEST_CASES+=("${tc_id}|${tc_file}|${display_name}|${tc_desc}|${tc_priority}")
+done
+
+if [ ${#TEST_CASES[@]} -eq 0 ]; then
+  echo -e "${RED}ERROR: No test cases discovered under flows/home/${NC}"
+  echo "  Expected files matching: flows/home/TC<NN>_*.yaml"
+  exit 1
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # APPLY TC FILTER (if provided)
@@ -333,7 +416,12 @@ if [ -n "$TC_FILTER" ]; then
   done
   if [ ${#FILTERED[@]} -eq 0 ]; then
     echo -e "${RED}ERROR: No matching test cases for filter '$TC_FILTER'${NC}"
-    echo "Available: TC01, TC02, TC03, TC04, TC05"
+    available_ids=""
+    for tc in "${TEST_CASES[@]}"; do
+      IFS='|' read -r aid _ <<< "$tc"
+      available_ids="${available_ids:+$available_ids, }$aid"
+    done
+    echo "Available: $available_ids"
     exit 1
   fi
   TEST_CASES=("${FILTERED[@]}")
@@ -370,6 +458,11 @@ MAX_RETRIES=2
 TOTAL=0
 PASSED=0
 FAILED=0
+# FIRST_ATTEMPT_PASSED counts tests that passed without any retry.
+# (PASSED - FIRST_ATTEMPT_PASSED) = tests that flaked and only passed on
+# retry — useful signal that something is unstable even when totals are
+# green. Surfaced in the summary + JSON for trend tracking.
+FIRST_ATTEMPT_PASSED=0
 TEST_RESULTS=""
 declare -a TEST_STATUS_ARRAY=()
 START_TIME=$(date +%s)
@@ -519,7 +612,11 @@ for test_case in "${TEST_CASES[@]}"; do
       FINAL_OUTPUT="$TEST_OUTPUT"
       FINAL_DURATION=$TEST_DURATION
       FINAL_LOG_FILE="$TEST_LOG_FILE"
-      [ $ATTEMPT -gt 1 ] && RETRY_INFO=" ${CYAN}(passed on retry $((ATTEMPT-1)))${NC}"
+      if [ $ATTEMPT -eq 1 ]; then
+        FIRST_ATTEMPT_PASSED=$((FIRST_ATTEMPT_PASSED + 1))
+      else
+        RETRY_INFO=" ${CYAN}(passed on retry $((ATTEMPT-1)))${NC}"
+      fi
     else
       FINAL_OUTPUT="$TEST_OUTPUT"
       FINAL_DURATION=$TEST_DURATION
@@ -600,6 +697,18 @@ RUN_DATE_FRIENDLY=$(date +"%d %B %Y")
 RUN_TIME_FRIENDLY=$(date +"%I:%M %p IST")
 TIMESTAMP_FRIENDLY="$RUN_DATE_FRIENDLY, $RUN_TIME_FRIENDLY"
 
+# Compute derived counters once, here — both the JSON and the terminal
+# summary below read these. (Previously FLAKED was computed in the summary
+# block AFTER the JSON heredoc ran, leaving "flaked": , in the report.)
+FLAKED=$((PASSED - FIRST_ATTEMPT_PASSED))
+if [ "$TOTAL" -gt 0 ]; then
+  PASS_RATE_INT=$(echo "scale=0; $PASSED * 100 / $TOTAL" | bc)
+  FLAKE_RATE_INT=$(echo "scale=0; $FLAKED * 100 / $TOTAL" | bc)
+else
+  PASS_RATE_INT=0
+  FLAKE_RATE_INT=0
+fi
+
 cat > "$REPORT_FILE" << EOF
 {
   "testSuite": "FarmerChat Core Scenarios",
@@ -608,7 +717,10 @@ cat > "$REPORT_FILE" << EOF
     "total": $TOTAL,
     "passed": $PASSED,
     "failed": $FAILED,
-    "pass_rate": "$(echo "scale=0; $PASSED * 100 / $TOTAL" | bc)%"
+    "first_attempt_passed": $FIRST_ATTEMPT_PASSED,
+    "flaked": $FLAKED,
+    "pass_rate": "${PASS_RATE_INT}%",
+    "flake_rate": "${FLAKE_RATE_INT}%"
   },
 
   "device": {
@@ -833,9 +945,14 @@ echo -e "  Device:     ${CYAN}$DEVICE_BRAND $DEVICE_MODEL${NC}"
 echo -e "  Android:    ${CYAN}$ANDROID_VERSION (SDK $SDK_VERSION)${NC}"
 echo ""
 echo -e "  Total:      ${YELLOW}$TOTAL${NC}"
-echo -e "  Passed:     ${GREEN}$PASSED${NC}"
+echo -e "  Passed:     ${GREEN}$PASSED${NC} (${FIRST_ATTEMPT_PASSED} on first attempt, ${FLAKED} after retry)"
 echo -e "  Failed:     ${RED}$FAILED${NC}"
-echo -e "  Pass Rate:  ${CYAN}$(echo "scale=2; $PASSED * 100 / $TOTAL" | bc)%${NC}"
+echo -e "  Pass Rate:  ${CYAN}${PASS_RATE_INT}%${NC}"
+if [ "$FLAKED" -gt 0 ]; then
+  echo -e "  Flake Rate: ${YELLOW}${FLAKE_RATE_INT}%${NC} (${FLAKED}/${TOTAL} needed a retry)"
+else
+  echo -e "  Flake Rate: ${GREEN}${FLAKE_RATE_INT}%${NC}"
+fi
 echo -e "  Duration:   ${YELLOW}${MINS}m ${SECS}s${NC}"
 echo ""
 echo -e "  ${CYAN}Logs:${NC}         $RUN_LOGS_DIR"
@@ -849,8 +966,9 @@ echo ""
   echo "═══════════════════════════════════════════════════════════════"
   echo "TEST RUN SUMMARY"
   echo "═══════════════════════════════════════════════════════════════"
-  echo "Total: $TOTAL | Passed: $PASSED | Failed: $FAILED"
-  echo "Pass Rate: $(echo "scale=2; $PASSED * 100 / $TOTAL" | bc)%"
+  echo "Total: $TOTAL | Passed: $PASSED ($FIRST_ATTEMPT_PASSED first-attempt) | Failed: $FAILED"
+  echo "Pass Rate: ${PASS_RATE_INT}%"
+  echo "Flake Rate: ${FLAKE_RATE_INT}% ($FLAKED needed retry)"
   echo "Duration: ${MINS}m ${SECS}s"
   echo "Completed: $(date)"
 } >> "$MASTER_LOG"

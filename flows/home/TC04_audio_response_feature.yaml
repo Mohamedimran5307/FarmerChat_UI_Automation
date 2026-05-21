@@ -1,5 +1,7 @@
 appId: any
 name: "TC04 - Audio Response Feature"
+# priority: P0
+# description: Ensures users can listen to AI responses using the text-to-speech feature
 tags:
   - home
   - chat
@@ -7,9 +9,11 @@ tags:
 ---
 - runFlow: ../../helpers/complete_onboarding.yaml
 
-# Open the type input bar
+# Open the type input bar. waitForAnimationToEnd guards against the
+# chat_text_input being declared visible while still animating in.
 - tapOn:
     id: "primary_input_type_btn"
+- waitForAnimationToEnd
 - extendedWaitUntil:
     visible:
       id: "chat_text_input"
@@ -25,8 +29,7 @@ tags:
     id: "chat_send_btn"
 
 # scrollUntilVisible waits up to 90s for chat_listen_btn, which appears
-# only after the answer finishes streaming — no separate "wait for AI
-# response" step needed.
+# only after the answer finishes streaming.
 - scrollUntilVisible:
     centerElement: true
     element:
@@ -34,14 +37,32 @@ tags:
     direction: DOWN
     timeout: 90000
 
-# Start playback, then stop it — both should be no-ops on the same control
-- tapOn:
-    id: "chat_listen_btn"
-- waitForAnimationToEnd
+# State machine: Listen (idle) → Pause (playing) → Play (paused).
+# These strings are accessibilityText on the icon inside chat_listen_btn;
+# Maestro's text: matcher also reads a11y labels. Strings are English-only
+# — TC04 is bound to LANGUAGE_CODE=en via config/env.yaml.
 - assertVisible:
-    id: "chat_listen_btn"
+    text: "Listen"
+
+# Start playback. assertVisible text:"Pause" is the actual proof that
+# audio playback started — not just that the button is clickable.
 - tapOn:
     id: "chat_listen_btn"
-- waitForAnimationToEnd
+- waitForAnimationToEnd:
+    timeout: 3000
+- extendedWaitUntil:
+    visible:
+      text: "Pause"
+    timeout: 5000
+
+# Pause playback. State should flip to "Play" (resumable).
+- tapOn:
+    id: "chat_listen_btn"
+- waitForAnimationToEnd:
+    timeout: 2000
+- extendedWaitUntil:
+    visible:
+      text: "Play"
+    timeout: 5000
 - assertVisible:
     id: "chat_screen"

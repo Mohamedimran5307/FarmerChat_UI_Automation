@@ -1,5 +1,7 @@
 appId: any
 name: "TC01 - Location-Based Personalization"
+# priority: P0
+# description: Ensures the app captures user GPS via the weather widget and displays relevant image questions and content cards based on location
 tags:
   - home
   - regression

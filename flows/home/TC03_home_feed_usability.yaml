@@ -1,5 +1,7 @@
 appId: any
 name: "TC03 - Home Feed Usability"
+# priority: P1
+# description: Confirms that users can smoothly scroll through the home feed and access all content cards without issues
 tags:
   - home
   - regression

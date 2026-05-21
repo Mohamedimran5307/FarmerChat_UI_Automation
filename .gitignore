@@ -13,3 +13,7 @@
 /reports/
 /results/
 reports/
+
+# Secrets — env.local.yaml carries real PHONE_NUMBER / OTP_CODE etc.
+# Use config/env.local.example.yaml as the template.
+config/env.local.yaml
