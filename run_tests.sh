@@ -326,8 +326,14 @@ wait_for_driver_port() {
 setup_test() {
   # Keep the screen on and unlocked — long AI-response waits (30–90s) would
   # otherwise hit the OEM screen-lock and surface as "Element not found".
+  # `svc power stayon true` keeps the SCREEN on while plugged in but does
+  # NOT prevent the lockscreen — after N seconds of inactivity the
+  # keyguard activates even if the display stays lit. So we also send
+  # KEYCODE_MENU (82) which dismisses the keyguard on devices without a
+  # PIN / pattern (the FarmerChat test device).
   adb -s $DEVICE_ID shell svc power stayon true 2>/dev/null || true
   adb -s $DEVICE_ID shell input keyevent KEYCODE_WAKEUP 2>/dev/null || true
+  adb -s $DEVICE_ID shell input keyevent 82 2>/dev/null || true
 
   adb -s $DEVICE_ID shell am force-stop $APP_ID 2>/dev/null
   adb -s $DEVICE_ID shell "run-as $APP_ID sh -c 'rm -rf shared_prefs/* files/* cache/* databases/*'" 2>/dev/null || true
@@ -363,6 +369,7 @@ for tc_path in "$SCRIPT_DIR"/flows/home/TC*_*.yaml; do
   tc_name=""
   tc_priority=""
   tc_desc=""
+  tc_requires=""   # e.g. "LANGUAGE_CODE=en"
 
   # Read front-matter only (stop at `---`).
   while IFS= read -r line || [ -n "$line" ]; do
@@ -373,6 +380,8 @@ for tc_path in "$SCRIPT_DIR"/flows/home/TC*_*.yaml; do
       tc_priority="${BASH_REMATCH[1]}"
     elif [[ -z "$tc_desc" && "$line" =~ ^\#[[:space:]]*description:[[:space:]]*(.*)$ ]]; then
       tc_desc="${BASH_REMATCH[1]}"
+    elif [[ -z "$tc_requires" && "$line" =~ ^\#[[:space:]]*requires:[[:space:]]*(.*)$ ]]; then
+      tc_requires="${BASH_REMATCH[1]}"
     fi
   done < "$tc_path"
 
@@ -386,6 +395,19 @@ for tc_path in "$SCRIPT_DIR"/flows/home/TC*_*.yaml; do
   # Strip "TC## - " from the displayed name too so the runner's progress
   # column stays narrow (matches the old hand-curated names).
   display_name=$(echo "$tc_name" | sed -E 's/^TC[0-9]+[[:space:]]*-[[:space:]]*//')
+
+  # Honor `# requires: KEY=VALUE` constraints (e.g. LANGUAGE_CODE=en for
+  # TC04 — its assertions read English accessibilityText). Skip the TC
+  # with a yellow warning if the constraint isn't met by the loaded env.
+  if [ -n "$tc_requires" ]; then
+    req_key="${tc_requires%%=*}"
+    req_value="${tc_requires#*=}"
+    actual="${!req_key:-}"
+    if [ "$actual" != "$req_value" ]; then
+      echo -e "${YELLOW}  ⟳ Skipping $tc_id: requires $tc_requires (current ${req_key}=${actual:-<unset>})${NC}"
+      continue
+    fi
+  fi
 
   TEST_CASES+=("${tc_id}|${tc_file}|${display_name}|${tc_desc}|${tc_priority}")
 done
@@ -754,32 +776,58 @@ else
   STATUS_TEXT="$FAILED TEST(S) FAILED"
 fi
 
+# Find the last failure screenshot for a TC. Maestro's --debug-output
+# nests its session under .maestro/tests/<timestamp>/, and the failing
+# step gets a screenshot prefixed with the ❌ emoji. Returns empty if
+# nothing's there (e.g. the test crashed before any screen rendered).
+find_failure_screenshot() {
+  local tc_file="$1"
+  local last_screenshot=""
+  # Walk attempt dirs from highest to lowest — newest failure first.
+  for attempt_dir in $(ls -d "$RUN_LOGS_DIR/${tc_file}_attempt"*_debug 2>/dev/null | sort -r); do
+    while IFS= read -r f; do
+      [ -n "$f" ] && last_screenshot="$f" && break 2
+    done < <(find "$attempt_dir" -name 'screenshot-❌*.png' 2>/dev/null | sort -r)
+  done
+  echo "$last_screenshot"
+}
+
 # Build test cases HTML
 TEST_CASES_HTML=""
 TC_INDEX=0
 for test_case in "${TEST_CASES[@]}"; do
   IFS='|' read -r TC_ID TC_FILE TC_NAME TC_DESC TC_PRIORITY <<< "$test_case"
-  
+
   # Use actual recorded status for each test case
   if [ "${TEST_STATUS_ARRAY[$TC_INDEX]}" = "PASSED" ]; then
     TC_STATUS="PASSED"
     TC_STATUS_COLOR="#4caf50"
     TC_STATUS_BG="#e8f5e9"
     TC_ICON="✓"
+    SCREENSHOT_CELL=""
   else
     TC_STATUS="FAILED"
     TC_STATUS_COLOR="#f44336"
     TC_STATUS_BG="#ffebee"
     TC_ICON="✗"
+    # Embed the failure screenshot as base64 so the HTML stays
+    # self-contained when shared via email / Drive / etc.
+    SCREENSHOT_PATH=$(find_failure_screenshot "$TC_FILE")
+    if [ -n "$SCREENSHOT_PATH" ] && [ -f "$SCREENSHOT_PATH" ]; then
+      B64=$(base64 -i "$SCREENSHOT_PATH" 2>/dev/null | tr -d '\n')
+      SCREENSHOT_CELL="<details style='margin-top:8px;'><summary style='cursor:pointer; color:#1976d2; font-size:12px;'>📸 Failure screenshot</summary><img src='data:image/png;base64,${B64}' style='max-width:280px; border:1px solid #ddd; border-radius:4px; margin-top:6px; display:block;' /></details>"
+    else
+      SCREENSHOT_CELL="<div style='margin-top:8px; color:#999; font-size:11px;'>(no screenshot captured)</div>"
+    fi
   fi
   TC_INDEX=$((TC_INDEX + 1))
-  
+
   TEST_CASES_HTML="$TEST_CASES_HTML
     <tr>
       <td style='font-weight: 600; color: #2e7d32;'>$TC_ID</td>
       <td>$TC_NAME</td>
       <td style='color: #666; font-size: 13px;'>$TC_DESC</td>
-      <td><span style='background: ${TC_STATUS_BG}; color: ${TC_STATUS_COLOR}; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;'>$TC_ICON $TC_STATUS</span></td>
+      <td><span style='background: ${TC_STATUS_BG}; color: ${TC_STATUS_COLOR}; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;'>$TC_ICON $TC_STATUS</span>${SCREENSHOT_CELL}</td>
       <td><span style='background: #fff3e0; color: #e65100; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;'>$TC_PRIORITY</span></td>
     </tr>"
 done

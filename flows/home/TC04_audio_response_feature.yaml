@@ -2,6 +2,7 @@ appId: any
 name: "TC04 - Audio Response Feature"
 # priority: P0
 # description: Ensures users can listen to AI responses using the text-to-speech feature
+# requires: LANGUAGE_CODE=en
 tags:
   - home
   - chat

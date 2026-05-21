@@ -18,23 +18,33 @@ Automated UI test suite for the FarmerChat Android application using Maestro fra
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/Mohamedimran5307/maestro-stable.git
-   cd maestro-stable
+   git clone https://github.com/Mohamedimran5307/FarmerChat_Core_scenarios.git
+   cd FarmerChat_Core_scenarios
    ```
 
-2. **Run the test suite:**
+2. **Set up local secrets** (one-time):
+   ```bash
+   cp config/env.local.example.yaml config/env.local.yaml
+   # then edit config/env.local.yaml with real PHONE_NUMBER / OTP_CODE
+   ```
+   `config/env.local.yaml` is gitignored. The runner loads it on top of
+   `config/env.yaml` so its values override the committed defaults.
+
+3. **Run the test suite:**
    ```bash
    ./run_tests.sh
    ```
    
-   Or with your name:
+   Or with your name + a filter:
    ```bash
-   ./run_tests.sh "Your Name"
+   ./run_tests.sh "Your Name"            # full TC01–TC05 suite
+   ./run_tests.sh "Your Name" TC03       # just TC03
+   ./run_tests.sh "Your Name" TC01,TC03  # comma-separated subset
    ```
 
-3. **Follow the prompts** - Enter your name when asked
-
-4. **View Results** - JSON report will be generated in `reports/` folder
+4. **View Results** - JSON + HTML reports land in `reports/`. The
+   terminal summary calls out `Passed: N (X on first attempt, Y after
+   retry)` and a `Flake Rate` line so silent retries are visible.
 
 ---
 
@@ -225,11 +235,25 @@ maestro-stable/
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `GDRIVE_FOLDER_ID` | (none) | Google Drive folder ID for uploads |
-| `RCLONE_REMOTE` | `gdrive` | rclone remote name |
-| `APP_ID` | `org.digitalgreen.farmer.chat` | App package name |
+The runner reads two YAML files in order:
+1. `config/env.yaml` — committed defaults (no secrets)
+2. `config/env.local.yaml` — gitignored, overrides the defaults. Holds
+   `PHONE_NUMBER`, `OTP_CODE`, and anything else you don't want in git.
+   Template: `config/env.local.example.yaml`.
+
+Both files use a simple `KEY: VALUE` format. Every parsed key is exported
+to the shell and passed to `maestro` via `--env`.
+
+| Variable | Where defined | Default | Description |
+|----------|---------------|---------|-------------|
+| `APP_ID` | env.yaml | `org.digitalgreen.farmer.chat` | App package name |
+| `LANGUAGE_CODE` | env.yaml | `en` | Language to pick during onboarding. **TC04 currently asserts on English accessibility strings ("Listen"/"Pause"/"Play") — running TC04 with any other code will fail.** |
+| `USER_NAME` | env.yaml | `Test Farmer` | Name typed if the legacy name screen appears |
+| `WAIT_TIMEOUT` | env.yaml | `10000` | Default timeout (ms) for waits |
+| `PHONE_NUMBER` | **env.local.yaml** | — | Real phone for TC05 signup |
+| `OTP_CODE` | **env.local.yaml** | — | Test OTP for TC05 verify |
+| `GDRIVE_FOLDER_ID` | shell | (none) | Google Drive folder ID for uploads |
+| `RCLONE_REMOTE` | shell | `gdrive` | rclone remote name |
 
 ---
 
