@@ -27,20 +27,22 @@ tags:
       id: "home_screen"
     timeout: 10000
 
-# Open the first feed card via its "Learn More" CTA
-- extendedWaitUntil:
-    visible:
+# Open the first feed card via its "Learn More" CTA.
+# centerElement guards against the button rendering on top of the system
+# nav bar — Maestro's tap lands on the OS Home key otherwise (see commit
+# 3502503 for the prior occurrence).
+- scrollUntilVisible:
+    centerElement: true
+    element:
       id: "content_card_start_chat_btn"
+    direction: DOWN
     timeout: 15000
 - tapOn:
     id: "content_card_start_chat_btn"
     index: 0
 
-# The card opens chat_screen with the corresponding question pre-asked
-- extendedWaitUntil:
-    visible:
-      id: "chat_screen"
-    timeout: 30000
+# scrollUntilVisible below waits up to 90s for the answer to finish — no
+# extra extendedWaitUntil on chat_screen needed (it renders instantly).
 - scrollUntilVisible:
     centerElement: true
     element:

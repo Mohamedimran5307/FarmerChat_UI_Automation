@@ -24,11 +24,9 @@ tags:
 - tapOn:
     id: "chat_send_btn"
 
-# Wait for the answer to render and scroll to the Listen button
-- extendedWaitUntil:
-    visible:
-      id: "chat_screen"
-    timeout: 60000
+# scrollUntilVisible waits up to 90s for chat_listen_btn, which appears
+# only after the answer finishes streaming — no separate "wait for AI
+# response" step needed.
 - scrollUntilVisible:
     centerElement: true
     element:

@@ -24,11 +24,10 @@ tags:
 - tapOn:
     id: "chat_send_btn"
 
-# Wait for the chat screen and scroll to the suggested questions block
-- extendedWaitUntil:
-    visible:
-      id: "chat_screen"
-    timeout: 30000
+# scrollUntilVisible waits up to 90s for chat_suggested_questions, which
+# only appears once the answer is fully streamed — that's the implicit
+# "wait for AI response". An extra extendedWaitUntil on chat_screen is a
+# no-op because the wrapper is visible the instant we land here.
 - scrollUntilVisible:
     centerElement: true
     element:
@@ -39,16 +38,14 @@ tags:
 - assertVisible:
     id: "chat_suggested_questions"
 
-# Tap an "Ask" follow-up suggestion (exact match avoids the placeholder "Ask about your farm…")
+# Tap an "Ask" follow-up suggestion. ^Ask$ is anchored because Maestro's
+# text: matcher is regex and would otherwise also match the composer hint
+# "Ask about your farm…".
 - tapOn:
     text: "^Ask$"
-
-# Wait for the follow-up answer and verify suggestions reappear
-- extendedWaitUntil:
-    visible:
-      id: "chat_screen"
-    timeout: 30000
 - waitForAnimationToEnd
+
+# Same pattern for the follow-up answer.
 - scrollUntilVisible:
     centerElement: true
     element:
