@@ -46,6 +46,15 @@ Automated UI test suite for the FarmerChat Android application using Maestro fra
    terminal summary calls out `Passed: N (X on first attempt, Y after
    retry)` and a `Flake Rate` line so silent retries are visible.
 
+   Every attempt is recorded as an mp4 via `adb shell screenrecord`
+   (capped at 180s per Android's own limit; ~3 MB / minute at 4 Mbps).
+   The HTML report adds a collapsible `📹 Recordings` link per TC
+   pointing at the local mp4 file under `reports/logs_<run>/`. To skip
+   recording (e.g. on a low-disk machine):
+   ```bash
+   RECORD_DISABLED=1 ./run_tests.sh "Your Name"
+   ```
+
 ---
 
 ## Key Test Scenarios (Execution Order 1-5)

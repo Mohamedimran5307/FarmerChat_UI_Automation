@@ -495,10 +495,30 @@ START_TIME=$(date +%s)
 run_test_attempt() {
   local TC_FILE="$1"
   local ATTEMPT_NUM="$2"
-  
+
   TEST_LOG_FILE="$RUN_LOGS_DIR/${TC_FILE}_attempt${ATTEMPT_NUM}.log"
-  
+
   setup_test >/dev/null 2>&1
+
+  # ── Start screen recording on the device ────────────────────────────
+  # adb shell screenrecord caps at 180s per file. Most TCs come in
+  # under that; if a TC overruns the cap, screenrecord stops cleanly and
+  # the tail of the attempt isn't captured (test execution is
+  # unaffected). Honor RECORD_DISABLED=1 for users who want to skip
+  # recording (e.g. on low-disk dev machines).
+  local DEVICE_REC_PATH="/sdcard/maestro_rec_${TC_FILE}_attempt${ATTEMPT_NUM}.mp4"
+  local LOCAL_REC_PATH="$RUN_LOGS_DIR/${TC_FILE}_attempt${ATTEMPT_NUM}.mp4"
+  local REC_ENABLED=1
+  [ "${RECORD_DISABLED:-0}" = "1" ] && REC_ENABLED=0
+  local REC_ADB_PID=""
+  if [ "$REC_ENABLED" = "1" ]; then
+    adb -s $DEVICE_ID shell "rm -f $DEVICE_REC_PATH" 2>/dev/null
+    # --bit-rate keeps file size predictable (~3 MB / minute at 4 Mbps).
+    # No --size: let screenrecord pick the device native aspect ratio.
+    adb -s $DEVICE_ID shell screenrecord --bit-rate 4000000 --time-limit 180 "$DEVICE_REC_PATH" >/dev/null 2>&1 &
+    REC_ADB_PID=$!
+    sleep 1   # give screenrecord ~1s to initialize before the test runs
+  fi
 
   local POPUP_PID=""
   if [ "$POPUP_LOOP_ENABLED" = "1" ]; then
@@ -525,6 +545,24 @@ run_test_attempt() {
   if [ -n "$POPUP_PID" ]; then
     kill $POPUP_PID 2>/dev/null || true
     wait $POPUP_PID 2>/dev/null || true
+  fi
+
+  # ── Stop screen recording and pull the mp4 ──────────────────────────
+  # SIGINT lets screenrecord finalize the mp4 header cleanly; SIGKILL
+  # would leave a corrupted file. Sleep gives the muxer time to flush
+  # before we pull.
+  if [ "$REC_ENABLED" = "1" ]; then
+    adb -s $DEVICE_ID shell pkill -SIGINT screenrecord 2>/dev/null || true
+    [ -n "$REC_ADB_PID" ] && wait $REC_ADB_PID 2>/dev/null || true
+    sleep 2
+    if adb -s $DEVICE_ID pull "$DEVICE_REC_PATH" "$LOCAL_REC_PATH" >/dev/null 2>&1; then
+      adb -s $DEVICE_ID shell "rm -f $DEVICE_REC_PATH" 2>/dev/null || true
+    else
+      # screenrecord may have failed to start (some OEMs restrict it);
+      # leave a tombstone so the HTML link still resolves to a useful
+      # message instead of a 404.
+      LOCAL_REC_PATH=""
+    fi
   fi
   
   {
@@ -792,6 +830,26 @@ find_failure_screenshot() {
   echo "$last_screenshot"
 }
 
+# Build the <details> block of "▶ Attempt N" relative-links pointing at
+# every recorded mp4 for a TC. The HTML lives in $REPORTS_DIR and the
+# videos live in $REPORTS_DIR/logs_*/, so the link is just the basename
+# of $RUN_LOGS_DIR plus the file. Empty string when no recordings were
+# captured (RECORD_DISABLED=1, or screenrecord blocked by the OEM).
+build_recording_links() {
+  local tc_file="$1"
+  local run_dir_name=$(basename "$RUN_LOGS_DIR")
+  local links=""
+  for rec in "$RUN_LOGS_DIR/${tc_file}_attempt"*.mp4; do
+    [ -f "$rec" ] || continue
+    local attempt_n=$(basename "$rec" .mp4 | sed -E 's/.*_attempt([0-9]+)$/\1/')
+    local rel_path="${run_dir_name}/$(basename "$rec")"
+    links="${links}<a href=\"${rel_path}\" style=\"margin-right:10px; color:#1976d2; font-size:12px; text-decoration:none;\">▶ Attempt ${attempt_n}</a>"
+  done
+  if [ -n "$links" ]; then
+    echo "<details style='margin-top:6px;'><summary style='cursor:pointer; color:#1976d2; font-size:12px;'>📹 Recordings</summary><div style='margin-top:6px;'>${links}</div></details>"
+  fi
+}
+
 # Build test cases HTML
 TEST_CASES_HTML=""
 TC_INDEX=0
@@ -820,6 +878,7 @@ for test_case in "${TEST_CASES[@]}"; do
       SCREENSHOT_CELL="<div style='margin-top:8px; color:#999; font-size:11px;'>(no screenshot captured)</div>"
     fi
   fi
+  RECORDINGS_CELL=$(build_recording_links "$TC_FILE")
   TC_INDEX=$((TC_INDEX + 1))
 
   TEST_CASES_HTML="$TEST_CASES_HTML
@@ -827,7 +886,7 @@ for test_case in "${TEST_CASES[@]}"; do
       <td style='font-weight: 600; color: #2e7d32;'>$TC_ID</td>
       <td>$TC_NAME</td>
       <td style='color: #666; font-size: 13px;'>$TC_DESC</td>
-      <td><span style='background: ${TC_STATUS_BG}; color: ${TC_STATUS_COLOR}; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;'>$TC_ICON $TC_STATUS</span>${SCREENSHOT_CELL}</td>
+      <td><span style='background: ${TC_STATUS_BG}; color: ${TC_STATUS_COLOR}; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;'>$TC_ICON $TC_STATUS</span>${SCREENSHOT_CELL}${RECORDINGS_CELL}</td>
       <td><span style='background: #fff3e0; color: #e65100; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;'>$TC_PRIORITY</span></td>
     </tr>"
 done
