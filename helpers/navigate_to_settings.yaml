@@ -4,10 +4,10 @@ appId: any
     file: open_drawer.yaml
 - extendedWaitUntil:
     visible:
-      id: "drawer_settings_button"
+      id: "drawer_settings_btn"
     timeout: 5000
 - tapOn:
-    id: "drawer_settings_button"
+    id: "drawer_settings_btn"
 - waitForAnimationToEnd
 - extendedWaitUntil:
     visible:

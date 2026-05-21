@@ -7,35 +7,43 @@ tags:
 ---
 - runFlow: ../../helpers/complete_onboarding.yaml
 
+# Open the type input bar
 - tapOn:
-    id: "home_type_button"
-- tapOn: "Ask about your farm..."
+    id: "primary_input_type_btn"
+- extendedWaitUntil:
+    visible:
+      id: "chat_text_input"
+    timeout: 5000
+- tapOn:
+    id: "chat_text_input"
 - inputText: "What are common tomato diseases in Kenya"
 - extendedWaitUntil:
     visible:
-      id: "text_input_send_button"
+      id: "chat_send_btn"
     timeout: 5000
 - tapOn:
-    id: "text_input_send_button"
+    id: "chat_send_btn"
 
+# Wait for the answer to render and scroll to the Listen button
 - extendedWaitUntil:
     visible:
-      id: "chat_thread_list"
+      id: "chat_screen"
     timeout: 60000
 - scrollUntilVisible:
     centerElement: true
     element:
-      id: "chat_listen_button"
+      id: "chat_listen_btn"
     direction: DOWN
     timeout: 90000
 
+# Start playback, then stop it — both should be no-ops on the same control
 - tapOn:
-    id: "chat_listen_button"
+    id: "chat_listen_btn"
 - waitForAnimationToEnd
 - assertVisible:
-    id: "chat_listen_button"
+    id: "chat_listen_btn"
 - tapOn:
-    id: "chat_listen_button"
+    id: "chat_listen_btn"
 - waitForAnimationToEnd
 - assertVisible:
-    id: "chat_thread_list"
+    id: "chat_screen"

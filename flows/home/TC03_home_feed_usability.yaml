@@ -6,47 +6,47 @@ tags:
 ---
 - runFlow: ../../helpers/complete_onboarding.yaml
 
-# Set up location to get Kenya content cards (precondition for the feed test)
+# Set up location so the feed personalizes
 - runFlow: ../../helpers/grant_location.yaml
 
-# Scroll down to find "Related questions" section
+# Scroll the result chat to find the related-questions section
 - scrollUntilVisible:
     centerElement: true
     element:
-      text: "Related questions"
+      id: "chat_suggested_questions"
     direction: DOWN
     timeout: 90000
     speed: 40
-- assertVisible: "Related questions"
-# Go back to home screen
-- back
+- assertVisible:
+    id: "chat_suggested_questions"
 
+# Back to home
+- back
 - extendedWaitUntil:
     visible:
       id: "home_screen"
     timeout: 10000
+
+# Open the first feed card via its "Learn More" CTA
+- extendedWaitUntil:
+    visible:
+      id: "content_card_start_chat_btn"
+    timeout: 15000
 - tapOn:
-    text: "Learn More"
+    id: "content_card_start_chat_btn"
     index: 0
+
+# The card opens chat_screen with the corresponding question pre-asked
 - extendedWaitUntil:
     visible:
-      id: "chat_read_full_advice_button"
+      id: "chat_screen"
     timeout: 30000
 - scrollUntilVisible:
     centerElement: true
     element:
-      id: "chat_read_full_advice_button"
-    direction: DOWN
-- tapOn:
-    id: "chat_read_full_advice_button"
-- extendedWaitUntil:
-    visible:
-      id: "chat_thread_list"
-    timeout: 30000
-- scrollUntilVisible:
-    centerElement: true
-    element:
-      text: "Related questions"
+      id: "chat_suggested_questions"
     direction: DOWN
     timeout: 90000
-- assertVisible: "Related questions"
+    speed: 40
+- assertVisible:
+    id: "chat_suggested_questions"

@@ -7,52 +7,54 @@ tags:
 ---
 - runFlow: ../../helpers/complete_onboarding.yaml
 
-# Tap on Type button
+# Open the type input bar
 - tapOn:
-    id: "home_type_button"
-- tapOn: "Ask about your farm..."
-- inputText: "How to grow tomatoes in Kenya"
+    id: "primary_input_type_btn"
 - extendedWaitUntil:
     visible:
-      id: "text_input_send_button"
+      id: "chat_text_input"
     timeout: 5000
 - tapOn:
-    id: "text_input_send_button"
-
-# Wait for AI response
+    id: "chat_text_input"
+- inputText: "How to grow tomatoes"
 - extendedWaitUntil:
     visible:
-      id: "chat_thread_list"
-    timeout: 30000
-- waitForAnimationToEnd
+      id: "chat_send_btn"
+    timeout: 5000
+- tapOn:
+    id: "chat_send_btn"
 
-# Scroll down to find "Related questions" section
+# Wait for the chat screen and scroll to the suggested questions block
+- extendedWaitUntil:
+    visible:
+      id: "chat_screen"
+    timeout: 30000
 - scrollUntilVisible:
     centerElement: true
     element:
-      text: "Related questions"
+      id: "chat_suggested_questions"
     direction: DOWN
     timeout: 90000
     speed: 40
-- assertVisible: "Related questions"
+- assertVisible:
+    id: "chat_suggested_questions"
 
-# Tap Ask button (exact match to avoid "Ask about your farm...")
+# Tap an "Ask" follow-up suggestion (exact match avoids the placeholder "Ask about your farm…")
 - tapOn:
     text: "^Ask$"
 
-# Wait for new response after tapping related question
+# Wait for the follow-up answer and verify suggestions reappear
 - extendedWaitUntil:
     visible:
-      id: "chat_thread_list"
+      id: "chat_screen"
     timeout: 30000
 - waitForAnimationToEnd
-
-# Verify Related questions appear again after follow-up
 - scrollUntilVisible:
     centerElement: true
     element:
-      text: "Related questions"
+      id: "chat_suggested_questions"
     direction: DOWN
     timeout: 90000
     speed: 40
-- assertVisible: "Related questions"
+- assertVisible:
+    id: "chat_suggested_questions"

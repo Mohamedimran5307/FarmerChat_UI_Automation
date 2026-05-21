@@ -1,26 +1,10 @@
 appId: any
 ---
-# Handle system installation popups first
+# Handle device installation popups first (OPPO/realme; no-op elsewhere)
 - runFlow:
     file: dismiss_system_popup.yaml
 
-# Dismiss notification permission dialog
-- runFlow:
-    when:
-      visible:
-        text: "Allow"
-    commands:
-      - tapOn: "Allow"
-
-# Dismiss Privacy Policy popup
-- runFlow:
-    when:
-      visible:
-        text: "Privacy Policy"
-    commands:
-      - pressKey: back
-
-# If already on home screen, skip onboarding entirely
+# If already on home screen, skip onboarding entirely (idempotent rerun)
 - runFlow:
     when:
       visible:
@@ -29,22 +13,27 @@ appId: any
       - assertVisible:
           id: "home_screen"
 
-# Wait for language screen (reduced timeout)
+# Wait for language screen
 - extendedWaitUntil:
     visible:
       id: "language_screen"
-    timeout: 5000
+    timeout: 8000
     optional: true
 
-# Handle error screen
+# Handle "No internet" error screen
 - runFlow:
     when:
       visible:
         text: "Try again"
     commands:
       - tapOn: "Try again"
+      - extendedWaitUntil:
+          visible:
+            id: "language_screen"
+          timeout: 8000
+          optional: true
 
-# Proceed with onboarding if on language screen
+# Pick language and tap "Start using FarmerChat"
 - runFlow:
     when:
       visible:
@@ -62,15 +51,13 @@ appId: any
           timeout: 5000
       - tapOn:
           id: "language_start_button"
-      - runFlow:
-          when:
-            visible:
-              id: "language_start_button"
-          commands:
-            - tapOn:
-                id: "language_start_button"
 
-# Handle notification permission after language selection
+# Notification permission can appear a few seconds AFTER language pick
+- extendedWaitUntil:
+    visible:
+      id: "com.android.permissioncontroller:id/permission_allow_button"
+    timeout: 8000
+    optional: true
 - runFlow:
     when:
       visible:
@@ -79,6 +66,7 @@ appId: any
       - tapOn:
           id: "com.android.permissioncontroller:id/permission_allow_button"
 
+# Legacy text fallback for older builds that surface "Allow" as a custom button
 - runFlow:
     when:
       visible:
@@ -86,7 +74,7 @@ appId: any
     commands:
       - tapOn: "Allow"
 
-# Skip name entry if shown
+# Legacy "Skip for now" overlay (older onboarding only)
 - runFlow:
     when:
       visible:
@@ -94,7 +82,7 @@ appId: any
     commands:
       - tapOn: "Skip for now"
 
-# Handle name screen if visible
+# Legacy name screen (newer APK skips this entirely)
 - runFlow:
     when:
       visible:
@@ -116,7 +104,7 @@ appId: any
       - tapOn:
           id: "name_save_button"
 
-# Skip location interstitial
+# Legacy location interstitial
 - runFlow:
     when:
       visible:
@@ -125,8 +113,8 @@ appId: any
       - tapOn:
           id: "location_interstitial_skip"
 
-# Wait for home screen
+# Final wait for home screen
 - extendedWaitUntil:
     visible:
       id: "home_screen"
-    timeout: 10000
+    timeout: 15000

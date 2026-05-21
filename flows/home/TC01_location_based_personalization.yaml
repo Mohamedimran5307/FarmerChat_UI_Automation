@@ -8,27 +8,22 @@ tags:
 
 - runFlow: ../../helpers/grant_location.yaml
 
-# Scroll down to find "Related questions" section
+# After granting location, the weather/location card opens a chat — scroll to its related-questions block
 - scrollUntilVisible:
     centerElement: true
     element:
-      text: "Related questions"
+      id: "chat_suggested_questions"
     direction: DOWN
     timeout: 90000
     speed: 40
-- assertVisible: "Related questions"
+- assertVisible:
+    id: "chat_suggested_questions"
 
-# Go back to home screen using back button
+# Back to home and confirm a personalized feed card is rendered
 - back
-
 - extendedWaitUntil:
     visible:
       id: "home_screen"
     timeout: 10000
-
-# - scrollUntilVisible:
-#     element:
-#       text: "Learn More"
-#     direction: DOWN
-#     timeout: 15000
-- assertVisible: "Learn More"
+- assertVisible:
+    id: "content_card_start_chat_btn"

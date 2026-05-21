@@ -12,13 +12,12 @@ tags:
     id: "home_hamburger_button"
 - extendedWaitUntil:
     visible:
-      id: "drawer_signup_button"
+      id: "drawer_signup_btn"
     timeout: 5000
 - tapOn:
-    id: "drawer_signup_button"
+    id: "drawer_signup_btn"
 
-# "Sign up with phone number" button only appears if user hasn't asked 3+ questions
-# Otherwise it goes directly to auth_phone_input screen
+# Some builds insert an intermediate "Sign up with phone number" step
 - runFlow:
     when:
       visible:
@@ -32,8 +31,14 @@ tags:
     timeout: 10000
 - tapOn:
     id: "auth_phone_input"
-- inputText: "7013733824"
-- tapOn: "Send via SMS"
+- inputText: "${PHONE_NUMBER}"
+- hideKeyboard
+- extendedWaitUntil:
+    visible:
+      id: "auth_send_sms_btn"
+    timeout: 5000
+- tapOn:
+    id: "auth_send_sms_btn"
 
 - extendedWaitUntil:
     visible:
@@ -41,16 +46,21 @@ tags:
     timeout: 30000
 - tapOn:
     id: "auth_otp_input"
-- inputText: "1111"
+- inputText: "${OTP_CODE}"
+- hideKeyboard
+- extendedWaitUntil:
+    visible:
+      id: "auth_verify_btn"
+    timeout: 5000
 - tapOn:
-    id: "auth_submit_button"
+    id: "auth_verify_btn"
 
 - extendedWaitUntil:
     visible:
       id: "account_success_screen"
     timeout: 30000
 - tapOn:
-    id: "account_success_continue"
+    id: "account_success_btn_continue"
 
 - extendedWaitUntil:
     visible:
@@ -62,18 +72,18 @@ tags:
     id: "home_hamburger_button"
 - extendedWaitUntil:
     visible:
-      id: "drawer_settings_button"
+      id: "drawer_settings_btn"
     timeout: 5000
 - tapOn:
-    id: "drawer_settings_button"
+    id: "drawer_settings_btn"
 - extendedWaitUntil:
     visible:
       id: "settings_screen"
     timeout: 5000
 
-# ── Tap Logout in Settings ──
+# ── Tap Logout in Settings (same tag as Sign up; text flips with auth state) ──
 - tapOn:
-    id: "settings_logout_button"
+    id: "settings_btn_auth"
 
 # ── Assert navigated back to language screen ──
 - extendedWaitUntil:

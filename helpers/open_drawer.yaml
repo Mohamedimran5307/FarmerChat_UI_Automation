@@ -5,5 +5,5 @@ appId: any
 - waitForAnimationToEnd
 - extendedWaitUntil:
     visible:
-      id: "drawer_content"
+      id: "drawer_container"
     timeout: 5000
