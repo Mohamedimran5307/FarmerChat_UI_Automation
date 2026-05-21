@@ -830,23 +830,23 @@ find_failure_screenshot() {
   echo "$last_screenshot"
 }
 
-# Build the <details> block of "▶ Attempt N" relative-links pointing at
-# every recorded mp4 for a TC. The HTML lives in $REPORTS_DIR and the
-# videos live in $REPORTS_DIR/logs_*/, so the link is just the basename
-# of $RUN_LOGS_DIR plus the file. Empty string when no recordings were
-# captured (RECORD_DISABLED=1, or screenrecord blocked by the OEM).
+# Build a <details> block with one inline <video controls> per attempt.
+# Sources are relative paths (no base64) so the HTML stays small — videos
+# resolve when the report is viewed from $REPORTS_DIR alongside its
+# logs_<run>/ sibling. Returns empty when no recordings were captured
+# (RECORD_DISABLED=1, or screenrecord blocked by the OEM).
 build_recording_links() {
   local tc_file="$1"
   local run_dir_name=$(basename "$RUN_LOGS_DIR")
-  local links=""
+  local players=""
   for rec in "$RUN_LOGS_DIR/${tc_file}_attempt"*.mp4; do
     [ -f "$rec" ] || continue
     local attempt_n=$(basename "$rec" .mp4 | sed -E 's/.*_attempt([0-9]+)$/\1/')
     local rel_path="${run_dir_name}/$(basename "$rec")"
-    links="${links}<a href=\"${rel_path}\" style=\"margin-right:10px; color:#1976d2; font-size:12px; text-decoration:none;\">▶ Attempt ${attempt_n}</a>"
+    players="${players}<div style=\"margin-top:8px;\"><div style=\"font-size:11px; color:#555; margin-bottom:4px;\">Attempt ${attempt_n}</div><video controls preload=\"metadata\" src=\"${rel_path}\" style=\"max-width:320px; border:1px solid #ddd; border-radius:4px; display:block;\"></video></div>"
   done
-  if [ -n "$links" ]; then
-    echo "<details style='margin-top:6px;'><summary style='cursor:pointer; color:#1976d2; font-size:12px;'>📹 Recordings</summary><div style='margin-top:6px;'>${links}</div></details>"
+  if [ -n "$players" ]; then
+    echo "<details style='margin-top:6px;'><summary style='cursor:pointer; color:#1976d2; font-size:12px;'>📹 Recordings</summary>${players}</details>"
   fi
 }
 
