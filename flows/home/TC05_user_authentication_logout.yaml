@@ -10,6 +10,16 @@ tags:
 - runFlow: ../../helpers/complete_onboarding.yaml
 
 # ── Sign up with phone number ──
+# Ensure the expanded top state — home_hamburger_button unmounts from the
+# hierarchy when the home feed scrolls (see TC03 for the underlying
+# collapsing-header behavior). scrollUntilVisible has built-in retry and
+# is a no-op if hamburger is already in the hierarchy.
+- scrollUntilVisible:
+    centerElement: false
+    element:
+      id: "home_hamburger_button"
+    direction: UP
+    timeout: 15000
 - tapOn:
     id: "home_hamburger_button"
 - waitForAnimationToEnd
@@ -20,13 +30,14 @@ tags:
 - tapOn:
     id: "drawer_signup_btn"
 
-# Some builds insert an intermediate "Sign up with phone number" step
+# Some builds insert an intermediate "account benefits" sign-up step
 - runFlow:
     when:
       visible:
-        text: "Sign up with phone number"
+        id: "account_benefits_btn_signup"
     commands:
-      - tapOn: "Sign up with phone number"
+      - tapOn:
+          id: "account_benefits_btn_signup"
 
 - extendedWaitUntil:
     visible:
@@ -71,6 +82,14 @@ tags:
     timeout: 15000
 
 # ── Open drawer → Settings ──
+# Same hamburger-unmount guard as above. After the account-success →
+# home_screen transition the feed can settle in a collapsed state.
+- scrollUntilVisible:
+    centerElement: false
+    element:
+      id: "home_hamburger_button"
+    direction: UP
+    timeout: 15000
 - tapOn:
     id: "home_hamburger_button"
 - waitForAnimationToEnd

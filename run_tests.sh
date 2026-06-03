@@ -7,6 +7,11 @@
 # Don't exit on error - we handle errors with retry logic
 # set -e
 
+# Save original stdout so the per-attempt maestro output can be streamed
+# live to the terminal even when its capture site uses $() (which would
+# otherwise swallow it). Used as `tee /dev/fd/3` inside run_test_with_retry().
+exec 3>&1
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION
 # ─────────────────────────────────────────────────────────────────────────────
@@ -308,17 +313,44 @@ dismiss_system_popup() {
 # ─────────────────────────────────────────────────────────────────────────────
 # SETUP TEST FUNCTION
 # ─────────────────────────────────────────────────────────────────────────────
-# Wait until the Maestro driver port is listening on the device.
-# 7001 in hex = 1B59; appears in /proc/net/tcp when the driver service is up.
-# Returns 0 on success, 1 on timeout (10s max).
-wait_for_driver_port() {
-  local PORT_RETRIES=0
-  while [ $PORT_RETRIES -lt 5 ]; do
-    if adb -s $DEVICE_ID shell "cat /proc/net/tcp" 2>/dev/null | grep -qi "1B59"; then
+# Returns 0 if the Maestro driver port is currently listening on the
+# device, 1 otherwise. 7001 in hex = 1B59; appears in /proc/net/tcp once
+# the instrumented driver service is bound.
+driver_port_listening() {
+  adb -s $DEVICE_ID shell "cat /proc/net/tcp" 2>/dev/null | grep -qi "1B59"
+}
+
+# Ensure the Maestro instrumented driver is running on the device.
+# Symptoms of a missing driver: `maestro test` fails in <5s with
+# "io.grpc.StatusRuntimeException: UNAVAILABLE" caused by
+# "java.io.IOException: Command failed (tcp:7001): closed".
+#
+# The old `wait_for_driver_port` only POLLED for the port — if nothing
+# was ever going to bring the driver up (e.g. the device was rebooted,
+# or `adb kill-server` between retries killed the existing process)
+# we'd silently time out and let maestro fail with the cryptic gRPC
+# error. This function instead BOOTSTRAPS the driver if it isn't
+# already running, then polls.
+#
+# `am instrument -w` would normally block the host shell forever — `&`
+# detaches it, and Android keeps the device-side process alive across
+# the host shell going away because the AndroidJUnitRunner manages its
+# own lifecycle.
+ensure_maestro_driver() {
+  if driver_port_listening; then
+    return 0
+  fi
+  adb -s $DEVICE_ID shell am instrument -w -e debug false \
+    dev.mobile.maestro.test/androidx.test.runner.AndroidJUnitRunner \
+    >/dev/null 2>&1 &
+  local TRIES=0
+  # Instrumentation startup typically takes 3-8s on this device; give it 30s headroom.
+  while [ $TRIES -lt 15 ]; do
+    sleep 2
+    if driver_port_listening; then
       return 0
     fi
-    PORT_RETRIES=$((PORT_RETRIES + 1))
-    sleep 2
+    TRIES=$((TRIES + 1))
   done
   return 1
 }
@@ -339,7 +371,12 @@ setup_test() {
   adb -s $DEVICE_ID shell "run-as $APP_ID sh -c 'rm -rf shared_prefs/* files/* cache/* databases/*'" 2>/dev/null || true
   adb -s $DEVICE_ID forward tcp:7001 tcp:7001 2>/dev/null
   sleep 2
-  wait_for_driver_port
+  if ! ensure_maestro_driver; then
+    # Don't bail — let `maestro test` fail with its own error so the
+    # standard retry / report path takes over. But surface the cause to
+    # the terminal so it's obvious why the upcoming run will fail fast.
+    echo -e "${YELLOW}WARNING: Maestro driver did not come up on tcp:7001 — upcoming maestro test will likely fail with UNAVAILABLE / tcp:7001: closed${NC}" >&3
+  fi
   adb -s $DEVICE_ID shell am start --activity-clear-task -n $APP_ID/org.digitalgreen.farmer.chatbot.MainActivity 2>/dev/null
   sleep 3
   [ "$POPUP_LOOP_ENABLED" = "1" ] && dismiss_system_popup
@@ -533,10 +570,20 @@ run_test_attempt() {
 
   local DEBUG_DIR="$RUN_LOGS_DIR/${TC_FILE}_attempt${ATTEMPT_NUM}_debug"
   local TEST_START=$(date +%s)
+  # Tee through fd 3 (the script's original stdout) so each maestro step
+  # is visible in the terminal as it runs, while $() still captures the
+  # full text into TEST_OUTPUT for the log file and failure-detail
+  # parsing. `exit ${PIPESTATUS[0]}` inside the subshell propagates
+  # maestro's exit code (not tee's) out to $?.
+  echo "" >&3
+  echo "──────────────────────────────────────────────────────────────" >&3
+  echo " maestro test $TC_FILE (attempt $ATTEMPT_NUM)" >&3
+  echo "──────────────────────────────────────────────────────────────" >&3
   TEST_OUTPUT=$(maestro --device $DEVICE_ID test \
     --debug-output "$DEBUG_DIR" \
     "${ENV_FLAGS[@]}" \
-    "$SCRIPT_DIR/flows/home/${TC_FILE}.yaml" 2>&1)
+    "$SCRIPT_DIR/flows/home/${TC_FILE}.yaml" 2>&1 \
+    | tee /dev/fd/3; exit ${PIPESTATUS[0]})
 
   TEST_EXIT_CODE=$?
   local TEST_END=$(date +%s)
@@ -640,9 +687,10 @@ reset_maestro_for_retry() {
   # Maestro CLI upgrade. The function is cheap when nothing's wrong
   # (a pm-list + jar-mtime check), so safe to call on every retry.
   ensure_maestro_installed
-  # Poll for driver readiness instead of a blind sleep — exits early on
-  # clean recovery, waits up to 10s on slow recovery.
-  wait_for_driver_port || true
+  # adb kill-server above also tears down any active instrumentation
+  # session, so we may need to re-bootstrap the driver — ensure_maestro_driver
+  # is a no-op if the port is already live again.
+  ensure_maestro_driver || true
 }
 
 for test_case in "${TEST_CASES[@]}"; do
@@ -850,6 +898,44 @@ build_recording_links() {
   fi
 }
 
+# Render latency chips for any TC that emits lines like
+#   [TC02-LATENCY] first_answer_ms=18342
+# via `evalScript: ${console.log(...)}`. The Maestro CLI does NOT forward
+# JS `console.log` output to its own stdout (so it's NOT in the per-attempt
+# .log file we capture); it only appears in maestro.log inside the
+# --debug-output directory, prefixed with `JsConsole:`. So we read from
+# `<attempt>_debug/.maestro/tests/<ts>/maestro.log`.
+# We walk attempts from highest-numbered to lowest and use the first one
+# that has data — failed-fast retries don't emit latency lines, so the
+# successful (or further-reaching) attempt's numbers are what we want.
+build_latency_chips() {
+  local tc_file="$1"
+  local chips=""
+  local dir m_log line pair name value pretty
+  # Walk attempt-debug dirs newest-first. Iterating `ls ... | sort -r`
+  # directly via `$()` ensures word-splitting on newlines regardless of
+  # whatever IFS the caller left set.
+  for dir in $(ls -d "$RUN_LOGS_DIR/${tc_file}_attempt"*_debug 2>/dev/null | sort -r); do
+    m_log=$(find "$dir/.maestro/tests" -name maestro.log -type f 2>/dev/null | sort | tail -n1)
+    [ -z "$m_log" ] && continue
+    [ ! -f "$m_log" ] && continue
+    while IFS= read -r line; do
+      # Strip up through "JsConsole: [<prefix>-LATENCY] " leaving "<name>=<value>".
+      pair=$(echo "$line" | sed -E 's/.*JsConsole:[[:space:]]+\[[A-Z0-9]+-LATENCY\][[:space:]]+//')
+      name="${pair%%=*}"
+      value="${pair#*=}"
+      pretty="${name%_ms}"
+      pretty="${pretty//_/ }"
+      chips="${chips}<span style=\"background:#e3f2fd; color:#1565c0; padding:3px 9px; border-radius:10px; font-size:11px; margin:2px 4px 2px 0; display:inline-block;\">⏱ ${pretty}: ${value} ms</span>"
+    done < <(grep -E 'JsConsole:.*\[[A-Z0-9]+-LATENCY\]' "$m_log" 2>/dev/null)
+    # First attempt with data wins — earlier attempts are stale.
+    [ -n "$chips" ] && break
+  done
+  if [ -n "$chips" ]; then
+    echo "<div style='margin-top:8px; padding-top:8px; border-top:1px dashed #eee;'>${chips}</div>"
+  fi
+}
+
 # Build test cases HTML
 TEST_CASES_HTML=""
 TC_INDEX=0
@@ -879,6 +965,7 @@ for test_case in "${TEST_CASES[@]}"; do
     fi
   fi
   RECORDINGS_CELL=$(build_recording_links "$TC_FILE")
+  LATENCY_CELL=$(build_latency_chips "$TC_FILE")
   TC_INDEX=$((TC_INDEX + 1))
 
   TEST_CASES_HTML="$TEST_CASES_HTML
@@ -886,7 +973,7 @@ for test_case in "${TEST_CASES[@]}"; do
       <td style='font-weight: 600; color: #2e7d32;'>$TC_ID</td>
       <td>$TC_NAME</td>
       <td style='color: #666; font-size: 13px;'>$TC_DESC</td>
-      <td><span style='background: ${TC_STATUS_BG}; color: ${TC_STATUS_COLOR}; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;'>$TC_ICON $TC_STATUS</span>${SCREENSHOT_CELL}${RECORDINGS_CELL}</td>
+      <td><span style='background: ${TC_STATUS_BG}; color: ${TC_STATUS_COLOR}; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;'>$TC_ICON $TC_STATUS</span>${SCREENSHOT_CELL}${RECORDINGS_CELL}${LATENCY_CELL}</td>
       <td><span style='background: #fff3e0; color: #e65100; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;'>$TC_PRIORITY</span></td>
     </tr>"
 done

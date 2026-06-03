@@ -18,14 +18,18 @@ tags:
 - extendedWaitUntil:
     visible:
       id: "chat_text_input"
-    timeout: 5000
+    timeout: 3000
 - tapOn:
     id: "chat_text_input"
-- inputText: "What are common tomato diseases in Kenya"
+- inputText: "What are common tomato diseases"
+# Dismiss the IME so chat_send_btn can't be occluded on cramped displays.
+# chat_send_btn is gated on chat_text_input having non-empty text, NOT on
+# the keyboard being up, so this is safe.
+- hideKeyboard
 - extendedWaitUntil:
     visible:
       id: "chat_send_btn"
-    timeout: 5000
+    timeout: 3000
 - tapOn:
     id: "chat_send_btn"
 

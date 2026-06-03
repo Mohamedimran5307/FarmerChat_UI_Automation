@@ -22,21 +22,12 @@ appId: any
 - runFlow:
     when:
       visible:
-        text: "Get local farm advice"
+        id: "location_interstitial_cta_btn"
     commands:
       - tapOn:
-          text: "Share Location"
-          index: 1
+          id: "location_interstitial_cta_btn"
 
-# Handle location permission popup - "While using the app"
-- runFlow:
-    when:
-      visible:
-        text: "While using the app"
-    commands:
-      - tapOn: "While using the app"
-
-# Alternative: Handle by permission button ID
+# Handle location permission popup (foreground-only)
 - runFlow:
     when:
       visible:

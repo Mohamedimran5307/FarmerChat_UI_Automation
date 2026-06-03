@@ -17,14 +17,17 @@ tags:
 - extendedWaitUntil:
     visible:
       id: "chat_text_input"
-    timeout: 5000
+    timeout: 3000
 - tapOn:
     id: "chat_text_input"
-- inputText: "How to grow tomatoes"
+- inputText: "What type of fertilizer should I use for tomatoes for better growth and yield?"
+- hideKeyboard
 - extendedWaitUntil:
     visible:
       id: "chat_send_btn"
-    timeout: 5000
+    timeout: 3000
+# Capture send-tap time for the first-answer latency benchmark.
+- evalScript: ${output.t_send_first = Date.now()}
 - tapOn:
     id: "chat_send_btn"
 
@@ -32,12 +35,16 @@ tags:
 # only appears once the answer is fully streamed — that's the implicit
 # "wait for AI response".
 - scrollUntilVisible:
-    centerElement: true
+    centerElement: false
     element:
       id: "chat_suggested_questions"
     direction: DOWN
     timeout: 90000
-    speed: 40
+    speed: 75
+# Latency line is emitted via console.log → Maestro's internal maestro.log
+# (NOT the CLI stdout). build_latency_chips() in run_tests.sh picks this
+# up and renders a chip in the HTML report.
+- evalScript: ${console.log('[TC02-LATENCY] first_answer_ms=' + (Date.now() - output.t_send_first))}
 - assertVisible:
     id: "chat_suggested_questions"
 
@@ -45,17 +52,19 @@ tags:
 # `text: "^Ask$"` selector relied on Maestro's regex substring behavior
 # matching the "Ask" icon's a11y label — fragile if frontend ever changes
 # the icon label.
+- evalScript: ${output.t_send_followup = Date.now()}
 - tapOn:
     id: "chat_suggested_question_0"
 - waitForAnimationToEnd
 
 # Same pattern for the follow-up answer.
 - scrollUntilVisible:
-    centerElement: true
+    centerElement: false
     element:
       id: "chat_suggested_questions"
     direction: DOWN
     timeout: 90000
-    speed: 40
+    speed: 75
+- evalScript: ${console.log('[TC02-LATENCY] followup_answer_ms=' + (Date.now() - output.t_send_followup))}
 - assertVisible:
     id: "chat_suggested_questions"

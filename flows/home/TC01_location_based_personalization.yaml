@@ -17,7 +17,7 @@ tags:
       id: "chat_suggested_questions"
     direction: DOWN
     timeout: 90000
-    speed: 40
+    speed: 75   
 - assertVisible:
     id: "chat_suggested_questions"
 

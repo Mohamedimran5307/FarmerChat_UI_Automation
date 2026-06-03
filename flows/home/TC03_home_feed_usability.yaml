@@ -1,35 +1,57 @@
 appId: any
 name: "TC03 - Home Feed Usability"
 # priority: P1
-# description: Confirms that users can smoothly scroll through the home feed and access all content cards without issues
+# description: Confirms that the home feed scrolls smoothly through multiple cards and that a feed card opens its associated chat
 tags:
   - home
   - regression
 ---
 - runFlow: ../../helpers/complete_onboarding.yaml
 
-# Set up location so the feed personalizes
-- runFlow: ../../helpers/grant_location.yaml
-
-# Scroll the result chat to find the related-questions section
+# The home screen has a collapsing header (hamburger/weather/tagline) that
+# is rendered at the natural top of the feed but unmounts as soon as the
+# feed scrolls. After onboarding the feed sometimes settles partially
+# scrolled with a brief settling animation, so fixed-count swipes are
+# racey — scrollUntilVisible's built-in retry handles the settling window
+# and is a no-op if the hamburger is already in the hierarchy.
+#
+# home_hamburger_button only renders at the expanded top — using it as the
+# top-of-feed witness avoids depending on profile-prompt cards (e.g.
+# home_feed_card_gender), which can be toggled off via a backend feature
+# flag and would silently break the test if disabled.
 - scrollUntilVisible:
-    centerElement: true
+    centerElement: false
     element:
-      id: "chat_suggested_questions"
-    direction: DOWN
-    timeout: 90000
-    speed: 40
+      id: "home_hamburger_button"
+    direction: UP
+    timeout: 15000
 - assertVisible:
-    id: "chat_suggested_questions"
+    id: "home_hamburger_button"
 
-# Back to home
-- back
-- extendedWaitUntil:
-    visible:
-      id: "home_screen"
-    timeout: 10000
+# Exercise the feed — scroll deep enough that the original top is well
+# off-screen. content_card_start_chat_btn must still be present at this
+# depth, proving the feed kept rendering cards as we scrolled.
+- scroll
+- scroll
+- scroll
+- scroll
+- scroll
+- scroll
+- assertVisible:
+    id: "content_card_start_chat_btn"
 
-# Open the first feed card via its "Learn More" CTA.
+# Scroll back to the top — hamburger reappears in the hierarchy only when
+# the feed reaches the expanded top.
+- scrollUntilVisible:
+    centerElement: false
+    element:
+      id: "home_hamburger_button"
+    direction: UP
+    timeout: 15000
+- assertVisible:
+    id: "home_hamburger_button"
+
+# Bring the first content card's "Ask Now" CTA into a tappable position.
 # centerElement guards against the button rendering on top of the system
 # nav bar — Maestro's tap lands on the OS Home key otherwise (see commit
 # 3502503 for the prior occurrence).
@@ -38,13 +60,17 @@ tags:
     element:
       id: "content_card_start_chat_btn"
     direction: DOWN
-    timeout: 15000
+    timeout: 10000
 - tapOn:
     id: "content_card_start_chat_btn"
     index: 0
 
-# scrollUntilVisible below waits up to 90s for the answer to finish — no
-# extra extendedWaitUntil on chat_screen needed (it renders instantly).
+- assertVisible:
+    id: "chat_read_full_advice_btn"
+- tapOn:
+    id: "chat_read_full_advice_btn"     
+# Wait up to 90s for the chat answer (suggestions only appear after the
+# answer fully streams in — that's the implicit "wait for AI response").
 - scrollUntilVisible:
     centerElement: true
     element:
