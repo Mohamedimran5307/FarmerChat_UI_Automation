@@ -1,4 +1,4 @@
-appId: any
+appId: ${APP_ID}
 name: "TC04 - Audio Response Feature"
 # priority: P0
 # description: Ensures users can listen to AI responses using the text-to-speech feature
@@ -8,6 +8,7 @@ tags:
   - chat
   - regression
 ---
+- launchApp
 - runFlow: ../../helpers/complete_onboarding.yaml
 
 # Open the type input bar. waitForAnimationToEnd guards against the

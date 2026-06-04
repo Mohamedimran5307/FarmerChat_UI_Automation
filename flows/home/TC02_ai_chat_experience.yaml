@@ -1,4 +1,4 @@
-appId: any
+appId: ${APP_ID}
 name: "TC02 - AI Chat Experience"
 # priority: P0
 # description: Validates that users can ask farming-related questions and receive AI-generated responses along with suggested follow-up questions
@@ -7,6 +7,7 @@ tags:
   - chat
   - regression
 ---
+- launchApp
 - runFlow: ../../helpers/complete_onboarding.yaml
 
 # Open the type input bar. waitForAnimationToEnd guards against the

@@ -1,4 +1,4 @@
-appId: any
+appId: ${APP_ID}
 ---
 - tapOn:
     id: "home_hamburger_button"

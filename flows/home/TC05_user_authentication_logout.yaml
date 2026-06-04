@@ -1,4 +1,4 @@
-appId: any
+appId: ${APP_ID}
 name: "TC05 - User Authentication & Logout"
 # priority: P0
 # description: Verifies complete user flow including sign-up, login, and logout functionality
@@ -7,6 +7,7 @@ tags:
   - auth
   - regression
 ---
+- launchApp
 - runFlow: ../../helpers/complete_onboarding.yaml
 
 # ── Sign up with phone number ──

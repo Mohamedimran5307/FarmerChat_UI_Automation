@@ -1,4 +1,4 @@
-appId: any
+appId: ${APP_ID}
 ---
 # Handle device installation popups first (OPPO/realme; no-op elsewhere)
 - runFlow:

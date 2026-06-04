@@ -1,4 +1,4 @@
-appId: any
+appId: ${APP_ID}
 ---
 - runFlow:
     file: open_drawer.yaml

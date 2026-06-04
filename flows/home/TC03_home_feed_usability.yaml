@@ -1,4 +1,4 @@
-appId: any
+appId: ${APP_ID}
 name: "TC03 - Home Feed Usability"
 # priority: P1
 # description: Confirms that the home feed scrolls smoothly through multiple cards and that a feed card opens its associated chat
@@ -6,6 +6,7 @@ tags:
   - home
   - regression
 ---
+- launchApp
 - runFlow: ../../helpers/complete_onboarding.yaml
 
 # The home screen has a collapsing header (hamburger/weather/tagline) that
