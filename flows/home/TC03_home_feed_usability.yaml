@@ -73,11 +73,11 @@ tags:
 # Wait up to 90s for the chat answer (suggestions only appear after the
 # answer fully streams in — that's the implicit "wait for AI response").
 - scrollUntilVisible:
-    centerElement: true
+    centerElement: false
     element:
       id: "chat_suggested_questions"
     direction: DOWN
     timeout: 90000
-    speed: 40
+    speed: 75
 - assertVisible:
     id: "chat_suggested_questions"
