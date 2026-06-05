@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FarmerChat Maestro Test Suite - Setup Guide</title>
+    <title>FarmerChat Functional Automation — Setup Guide</title>
     <style>
         * {
             margin: 0;
@@ -413,9 +413,9 @@
     <div class="container">
         <!-- Header -->
         <div class="header">
-            <h1>🌾 FarmerChat Test Suite</h1>
-            <p class="subtitle">Maestro Automated UI Testing - Setup Guide</p>
-            <span class="version-badge">Version 2.1 • April 2026</span>
+            <h1>🌾 FarmerChat Functional Automation</h1>
+            <p class="subtitle">Maestro UI Test Suite — Local Setup &amp; Run Guide</p>
+            <span class="version-badge">Version 2.2 • June 2026</span>
         </div>
         
         <div class="content">
@@ -444,7 +444,8 @@
                 
                 <div style="background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 15px; border: 1px solid #a5d6a7;">
                     <h4 style="color: #2e7d32; margin-bottom: 12px; font-size: 14px; font-weight: 600;">📦 Command 1: Setup (one-time only)</h4>
-                    <div style="background: #1e1e1e; color: #d4d4d4; padding: 15px 20px; border-radius: 6px; font-family: 'SF Mono', 'Consolas', monospace; font-size: 12px; overflow-x: auto; word-wrap: break-word; white-space: pre-wrap;">brew install android-platform-tools && curl -Ls "https://get.maestro.mobile.dev" | bash && git clone https://github.com/Mohamedimran5307/FarmerChat_Core_scenarios.git && cd FarmerChat_Core_scenarios</div>
+                    <div style="background: #1e1e1e; color: #d4d4d4; padding: 15px 20px; border-radius: 6px; font-family: 'SF Mono', 'Consolas', monospace; font-size: 12px; overflow-x: auto; word-wrap: break-word; white-space: pre-wrap;">brew install android-platform-tools && brew install --cask temurin@21 && curl -Ls "https://get.maestro.mobile.dev" | bash && git clone https://github.com/digitalgreenorg/farmerchat-functional-automation.git && cd farmerchat-functional-automation</div>
+                    <p style="margin-top: 10px; font-size: 12px; color: #666;">Installs ADB + Eclipse Temurin JDK 21 (required by Maestro) + Maestro CLI, then clones the repo. The Temurin cask auto-registers with macOS so <code>java</code> is on PATH immediately — no <code>JAVA_HOME</code> wrangling needed.</p>
                 </div>
                 
                 <div style="background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 15px; border: 1px solid #a5d6a7;">
@@ -456,7 +457,7 @@
                     <span style="font-size: 20px;">⚠️</span>
                     <div>
                         <h4 style="font-size: 14px; margin-bottom: 5px; color: #e65100; font-weight: 600;">Before Running</h4>
-                        <p style="font-size: 14px; color: #555; margin: 0;">Make sure: <strong>(1)</strong> Android device connected via USB, <strong>(2)</strong> USB Debugging enabled, <strong>(3)</strong> FarmerChat app installed, <strong>(4)</strong> GPS mocked to Kenya using LocaEdit app</p>
+                        <p style="font-size: 14px; color: #555; margin: 0;">Make sure: <strong>(1)</strong> Android device connected via USB, <strong>(2)</strong> USB Debugging enabled, <strong>(3)</strong> FarmerChat app installed. FarmerChat is now globally released, so no GPS mocking is required — the app uses the device's real location.</p>
                     </div>
                 </div>
             </div>
@@ -506,6 +507,12 @@
                             <td><strong>ADB</strong></td>
                             <td>Latest</td>
                             <td>Android device communication</td>
+                            <td><span class="status required">Required</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Java JDK</strong></td>
+                            <td>17 or 21 (LTS)</td>
+                            <td>Runtime for Maestro CLI</td>
                             <td><span class="status required">Required</span></td>
                         </tr>
                         <tr>
@@ -566,14 +573,41 @@
             <div class="section">
                 <h2 class="section-title">
                     <span class="step-number">2</span>
-                    Install Maestro CLI
+                    Install Java JDK + Maestro CLI
                 </h2>
-                
+
+                <p style="margin-bottom: 15px;">Maestro is a JVM-based CLI, so a Java JDK (17 or 21) must be on PATH <em>before</em> installing or running Maestro. Skipping this is the #1 reason Maestro fails to start.</p>
+
+                <h3 style="font-size: 16px; color: #444; margin: 20px 0 10px;">2a. Install Java (JDK 21 LTS)</h3>
+                <div class="two-columns">
+                    <div class="column-box">
+                        <h4>🍎 macOS</h4>
+                        <div class="code-block" data-label="Terminal">
+<span class="prompt">$</span> brew install --cask temurin@21</div>
+                        <p style="font-size: 12px; color: #666; margin-top: 8px;">The Temurin cask auto-registers with macOS — <code>java</code> is on PATH immediately, no <code>JAVA_HOME</code> setup needed.</p>
+                    </div>
+                    <div class="column-box">
+                        <h4>🐧 Linux (Ubuntu/Debian)</h4>
+                        <div class="code-block" data-label="Terminal">
+<span class="prompt">$</span> sudo apt update
+<span class="prompt">$</span> sudo apt install openjdk-21-jdk</div>
+                    </div>
+                </div>
+
+                <div class="info-box tip" style="margin-top: 15px;">
+                    <span class="icon">💡</span>
+                    <div>
+                        <h4>Verify Java</h4>
+                        <p>Run <code>java -version</code>. You should see <code>openjdk version "21..."</code> (or <code>17...</code>). If it says "command not found," fix PATH before continuing — Maestro will not start without Java.</p>
+                    </div>
+                </div>
+
+                <h3 style="font-size: 16px; color: #444; margin: 25px 0 10px;">2b. Install Maestro CLI</h3>
                 <p style="margin-bottom: 15px;">Run the following command on macOS or Linux:</p>
-                
+
                 <div class="code-block" data-label="Terminal">
 <span class="prompt">$</span> curl -Ls "https://get.maestro.mobile.dev" | bash</div>
-                
+
                 <div class="info-box warning">
                     <span class="icon">⚠️</span>
                     <div>
@@ -583,7 +617,7 @@
 export PATH="$PATH:$HOME/.maestro/bin"</div>
                     </div>
                 </div>
-                
+
                 <div class="info-box tip">
                     <span class="icon">💡</span>
                     <div>
@@ -632,96 +666,6 @@ List of devices attached
             <div class="section">
                 <h2 class="section-title">
                     <span class="step-number">4</span>
-                    Mock GPS Location to Kenya (Using LocaEdit)
-                </h2>
-                
-                <p style="margin-bottom: 20px;">FarmerChat requires a Kenya location for testing. Follow these steps to mock GPS location:</p>
-                
-                <h3 style="font-size: 16px; color: #444; margin: 20px 0 15px;">Step 4.1: Install LocaEdit App</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width: 30%;">Property</th>
-                            <th style="width: 70%;">Value</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td><strong>App Name</strong></td>
-                            <td>LocaEdit - GPS Location Editor</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Play Store</strong></td>
-                            <td><a href="https://play.google.com/store/apps/details?id=com.locaedit.mock" style="color: #2e7d32;">Download LocaEdit</a></td>
-                        </tr>
-                    </tbody>
-                </table>
-                
-                <h3 style="font-size: 16px; color: #444; margin: 20px 0 15px;">Step 4.2: Enable Mock Location in Developer Options</h3>
-                <ol class="steps-list">
-                    <li>Go to <strong>Settings</strong> → <strong>Developer Options</strong></li>
-                    <li>Scroll down to find <strong>"Select mock location app"</strong></li>
-                    <li>Select <strong>LocaEdit</strong> from the list</li>
-                </ol>
-                
-                <h3 style="font-size: 16px; color: #444; margin: 20px 0 15px;">Step 4.3: Set Location to Kenya</h3>
-                <ol class="steps-list">
-                    <li>Open <strong>LocaEdit</strong> app</li>
-                    <li>Search for <strong>"Nairobi, Kenya"</strong> or enter coordinates manually</li>
-                    <li>Use these coordinates for Nairobi:</li>
-                </ol>
-                
-                <table style="margin-top: 15px;">
-                    <thead>
-                        <tr>
-                            <th style="width: 30%;">Coordinate</th>
-                            <th style="width: 70%;">Value</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td><strong>Latitude</strong></td>
-                            <td><code>-1.286389</code></td>
-                        </tr>
-                        <tr>
-                            <td><strong>Longitude</strong></td>
-                            <td><code>36.817223</code></td>
-                        </tr>
-                        <tr>
-                            <td><strong>Location</strong></td>
-                            <td>Nairobi, Kenya</td>
-                        </tr>
-                    </tbody>
-                </table>
-                
-                <div style="margin-top: 15px;">
-                    <ol class="steps-list" style="counter-reset: step-counter 3;">
-                        <li>Tap <strong>"Start"</strong> or <strong>"Play"</strong> button to enable mock location</li>
-                        <li>Keep LocaEdit running in the background during tests</li>
-                    </ol>
-                </div>
-                
-                <div class="info-box tip">
-                    <span class="icon">💡</span>
-                    <div>
-                        <h4>Verify Mock Location</h4>
-                        <p>Open Google Maps to confirm your location shows as Nairobi, Kenya before running tests.</p>
-                    </div>
-                </div>
-                
-                <div class="info-box warning">
-                    <span class="icon">⚠️</span>
-                    <div>
-                        <h4>Important</h4>
-                        <p>Keep LocaEdit running throughout the test execution. If mock location stops, location-based tests will fail.</p>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Step 5 -->
-            <div class="section">
-                <h2 class="section-title">
-                    <span class="step-number">5</span>
                     Install FarmerChat APK
                 </h2>
                 
@@ -755,22 +699,22 @@ List of devices attached
                 </div>
             </div>
             
-            <!-- Step 6 -->
+            <!-- Step 5 -->
             <div class="section">
                 <h2 class="section-title">
-                    <span class="step-number">6</span>
+                    <span class="step-number">5</span>
                     Clone the Test Repository
                 </h2>
                 
                 <div class="code-block" data-label="Terminal">
-<span class="prompt">$</span> git clone https://github.com/Mohamedimran5307/FarmerChat_Core_scenarios.git
-<span class="prompt">$</span> cd FarmerChat_Core_scenarios</div>
+<span class="prompt">$</span> git clone https://github.com/digitalgreenorg/farmerchat-functional-automation.git
+<span class="prompt">$</span> cd farmerchat-functional-automation</div>
             </div>
             
-            <!-- Step 7 -->
+            <!-- Step 6 -->
             <div class="section">
                 <h2 class="section-title">
-                    <span class="step-number">7</span>
+                    <span class="step-number">6</span>
                     Run the Tests
                 </h2>
                 
@@ -855,7 +799,7 @@ List of devices attached
                 <h2 class="section-title">Project Structure</h2>
                 
                 <div class="tree">
-                    <div class="tree-item"><span class="tree-folder">FarmerChat_Core_scenarios/</span></div>
+                    <div class="tree-item"><span class="tree-folder">farmerchat-functional-automation/</span></div>
                     <div class="tree-item">├── <span class="tree-file">run_tests.sh</span> <span class="tree-comment"># Main test runner script</span></div>
                     <div class="tree-item">├── <span class="tree-file">setup_device.sh</span> <span class="tree-comment"># Device setup utility</span></div>
                     <div class="tree-item">├── <span class="tree-folder">config/</span></div>
@@ -941,6 +885,14 @@ List of devices attached
                             </td>
                         </tr>
                         <tr>
+                            <td><strong>Maestro fails with "java: command not found" or "Unable to find JDK"</strong></td>
+                            <td>
+                                • Install Java: <code>brew install --cask temurin@21</code> (macOS) or <code>sudo apt install openjdk-21-jdk</code> (Linux)<br>
+                                • Verify: <code>java -version</code> should print <code>openjdk version "21..."</code> or <code>"17..."</code><br>
+                                • On macOS, if <code>java</code> still isn't found after install, restart your terminal so it picks up the new PATH
+                            </td>
+                        </tr>
+                        <tr>
                             <td><strong>Tests timing out</strong></td>
                             <td>
                                 • Ensure stable internet connection on device<br>
@@ -962,9 +914,9 @@ List of devices attached
         
         <!-- Footer -->
         <div class="footer">
-            <p><strong>Repository:</strong> <a href="https://github.com/Mohamedimran5307/FarmerChat_Core_scenarios">github.com/Mohamedimran5307/FarmerChat_Core_scenarios</a></p>
+            <p><strong>Repository:</strong> <a href="https://github.com/digitalgreenorg/farmerchat-functional-automation">github.com/digitalgreenorg/farmerchat-functional-automation</a></p>
             <p>For issues or questions, contact the QA team or raise an issue in the repository.</p>
-            <p style="margin-top: 15px; opacity: 0.6;">Last Updated: April 2026</p>
+            <p style="margin-top: 15px; opacity: 0.6;">Last Updated: June 2026</p>
         </div>
     </div>
 </body>
